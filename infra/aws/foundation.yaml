@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Voqro pilot foundation. Private storage, queues, invite-only identity and account-wide budget alerts. No compute or AI deployment.
+
+Parameters:
+  BudgetEmail:
+    Type: String
+    Description: Billing contact for actual and forecast alerts. Alerts do not stop charges.
+    AllowedPattern: '^[^\s@]+@[^\s@]+\.[^\s@]+$'
+  MonthlyBudgetUSD:
+    Type: Number
+    Default: 50
+    MinValue: 1
+    MaxValue: 50
+    Description: Account-wide monthly target in USD, including existing AWS usage.
+  LoginCallbackURL:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^https://[^\s]+$'
+    Description: Leave empty until the application implements verified Cognito sign-in. HTTPS only.
+  AppOrigin:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^https://[A-Za-z0-9.-]+(:[0-9]+)?$'
+    Description: Exact HTTPS application origin for direct private media uploads, without a path or trailing slash. Empty disables browser CORS.
+
+Conditions:
+  EnableHostedLogin: !Not [!Equals [!Ref LoginCallbackURL, '']]
+  EnableS3BrowserAccess: !Not [!Equals [!Ref AppOrigin, '']]
+
+Resources:
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      CorsConfiguration: !If
+        - EnableS3BrowserAccess
+        - CorsRules:
+            - Id: ExactApplicationOrigin
+              AllowedOrigins: [!Ref AppOrigin]
+              AllowedMethods: [PUT, GET, HEAD]
+              AllowedHeaders: [content-type, x-amz-checksum-sha256]
+              ExposedHeaders: [ETag, x-amz-checksum-sha256, x-amz-version-id]
+              MaxAge: 300
+        - !Ref 'AWS::NoValue'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: {Status: Enabled}
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortAbandonedMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 7}
+          - Id: RetainReplacedVersionsForThirtyDays
+            Status: Enabled
+            NoncurrentVersionExpiration: {NoncurrentDays: 30}
+      Tags: [{Key: Application, Value: voqro}, {Key: Purpose, Value: private-media}]
+  MediaBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MediaBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: RequireTLS
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt MediaBucket.Arn, !Sub '${MediaBucket.Arn}/*']
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: {Status: Enabled}
+      LifecycleConfiguration:
+        Rules:
+          - Id: BackupRetention
+            Prefix: snapshots/
+            Status: Enabled
+            ExpirationInDays: 90
+            NoncurrentVersionExpiration: {NoncurrentDays: 30}
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 7}
+      Tags: [{Key: Application, Value: voqro}, {Key: Purpose, Value: backups}]
+  BackupBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BackupBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: RequireTLS
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt BackupBucket.Arn, !Sub '${BackupBucket.Arn}/*']
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+  ProcessingDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+      RedriveAllowPolicy:
+        redrivePermission: byQueue
+        sourceQueueArns:
+          - !Sub 'arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${AWS::StackName}-processing'
+      Tags: [{Key: Application, Value: voqro}]
+  ProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-processing'
+      SqsManagedSseEnabled: true
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ProcessingDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      Tags: [{Key: Application, Value: voqro}]
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref ProcessingQueue, !Ref ProcessingDeadLetterQueue]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: RequireTLS
+            Effect: Deny
+            Principal: '*'
+            Action: sqs:*
+            Resource: [!GetAtt ProcessingQueue.Arn, !GetAtt ProcessingDeadLetterQueue.Arn]
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      UserPoolTier: LITE
+      DeletionProtection: ACTIVE
+      AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
+      UsernameAttributes: [email]
+      UsernameConfiguration: {CaseSensitive: false}
+      AutoVerifiedAttributes: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms: [{Name: verified_email, Priority: 1}]
+      MfaConfiguration: 'ON'
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 3
+      UserAttributeUpdateSettings: {AttributesRequireVerificationBeforeUpdate: [email]}
+      UserPoolTags: {Application: voqro}
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: voqro-web
+      GenerateSecret: false
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 1
+      TokenValidityUnits: {AccessToken: hours, IdToken: hours, RefreshToken: days}
+      SupportedIdentityProviders: [COGNITO]
+      AllowedOAuthFlowsUserPoolClient: !If [EnableHostedLogin, true, false]
+      AllowedOAuthFlows: !If [EnableHostedLogin, [code], !Ref 'AWS::NoValue']
+      AllowedOAuthScopes: !If [EnableHostedLogin, [openid, email, profile], !Ref 'AWS::NoValue']
+      CallbackURLs: !If [EnableHostedLogin, [!Ref LoginCallbackURL], !Ref 'AWS::NoValue']
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::StackName}-account-monthly'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: {Amount: !Ref MonthlyBudgetUSD, Unit: USD}
+      NotificationsWithSubscribers:
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 50, ThresholdType: PERCENTAGE}
+          Subscribers: [{SubscriptionType: EMAIL, Address: !Ref BudgetEmail}]
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE}
+          Subscribers: [{SubscriptionType: EMAIL, Address: !Ref BudgetEmail}]
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE}
+          Subscribers: [{SubscriptionType: EMAIL, Address: !Ref BudgetEmail}]
+        - Notification: {NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE}
+          Subscribers: [{SubscriptionType: EMAIL, Address: !Ref BudgetEmail}]
+
+Outputs:
+  Region: {Value: !Ref 'AWS::Region'}
+  MediaBucketName: {Value: !Ref MediaBucket}
+  BackupBucketName: {Value: !Ref BackupBucket}
+  QueueURL: {Value: !Ref ProcessingQueue}
+  QueueArn: {Value: !GetAtt ProcessingQueue.Arn}
+  DeadLetterQueueURL: {Value: !Ref ProcessingDeadLetterQueue}
+  CognitoUserPoolId: {Value: !Ref UserPool}
+  CognitoClientId: {Value: !Ref UserPoolClient}
+  BudgetUSD: {Value: !Ref MonthlyBudgetUSD}

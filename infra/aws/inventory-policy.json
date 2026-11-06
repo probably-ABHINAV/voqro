@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "ReadPilotInventory",
+    "Effect": "Allow",
+    "Action": [
+      "sts:GetCallerIdentity", "ec2:DescribeInstances", "ec2:DescribeNatGateways",
+      "ec2:DescribeAddresses", "elasticloadbalancing:DescribeLoadBalancers",
+      "rds:DescribeDBInstances", "s3:ListAllMyBuckets", "sqs:ListQueues",
+      "cognito-idp:ListUserPools", "lightsail:GetInstances", "cloudformation:ListStacks",
+      "bedrock:ListFoundationModels", "ses:GetAccount", "budgets:ViewBudget"
+    ],
+    "Resource": "*"
+  }]
+}

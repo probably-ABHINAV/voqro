@@ -1,0 +1,23 @@
+# Allow only the production application and its online-backup command.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!LICENSE
+!*.mjs
+!public/
+!public/**
+!scripts/
+!scripts/backup.mjs
+
+# Never send local configuration, credentials or runtime data to the builder.
+**/.env*
+**/.aws/**
+**/.data/**
+**/node_modules/**
+**/*.pem
+**/*.key
+**/*credentials*
+**/*.sqlite*
+**/.DS_Store

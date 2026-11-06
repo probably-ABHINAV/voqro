@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'./tests/browser',use:{baseURL:process.env.TEST_BASE_URL||'http://127.0.0.1:3001',headless:true,launchOptions:{executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']}},webServer:{command:'DEMO_MODE=1 DB_PATH=:memory: PORT=3001 npm start',url:'http://127.0.0.1:3001/api/health',reuseExistingServer:false},workers:1,reporter:'list'});

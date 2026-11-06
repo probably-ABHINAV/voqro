@@ -1,0 +1,30 @@
+{
+  "name": "voqro",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --use-env-proxy --env-file-if-exists=.env --disable-warning=ExperimentalWarning server.mjs",
+    "dev": "node --use-env-proxy --watch --env-file-if-exists=.env --disable-warning=ExperimentalWarning server.mjs",
+    "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "test:browser": "playwright test",
+    "build:vercel": "node scripts/build-vercel.mjs",
+    "backup": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/backup.mjs"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1163.0",
+    "@aws-sdk/client-s3": "^3.1163.0",
+    "@aws-sdk/client-sesv2": "^3.1163.0",
+    "@aws-sdk/client-transcribe": "^3.1163.0",
+    "@aws-sdk/s3-request-presigner": "^3.1163.0",
+    "@smithy/node-http-handler": "^4.14.2",
+    "https-proxy-agent": "^9.1.0"
+  }
+}
