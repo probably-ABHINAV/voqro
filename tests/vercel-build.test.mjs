@@ -12,10 +12,18 @@ async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'voqro-vercel-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   await mkdir(join(root, 'public', 'art'), {recursive: true});
-  await writeFile(join(root, 'public', 'index.html'), '<script type="module" src="/app.js"></script>');
+  await writeFile(join(root, 'public', 'index.html'), '<html><head><title>Fixture</title></head><body><script type="module" src="/app.js"></script></body></html>');
   await writeFile(join(root, 'public', 'app.js'), "fetch('/api/public');");
   await writeFile(join(root, 'public', 'art', 'profile.svg'), '<svg/>');
   return root;
+}
+
+async function addPreviewFixture(root) {
+  await mkdir(join(root, 'preview'));
+  await writeFile(join(root, 'preview', 'entry.mjs'), "await import('/app.js');");
+  await writeFile(join(root, 'preview', 'api.mjs'), 'export function createPreviewAPI() {}');
+  await writeFile(join(root, 'preview', 'styles.css'), '.preview-banner { display: block; }');
+  await writeFile(join(root, 'preview', 'fixtures.json'), JSON.stringify({schema_version: 1, generated_at: '2026-11-06T12:00:00Z', public: {demo: true}, users: [{id: 'u_owner'}], workspaces: {u_owner: {demo: true}}, responses: {}}));
 }
 
 test('Vercel build rejects missing, non-HTTPS, credential-bearing and private origins', () => {
@@ -113,5 +121,77 @@ test('Vercel build refuses redirected output paths without touching their target
     await symlink(target, redirected === 'output' ? join(root, '.vercel', 'output') : join(root, '.vercel'));
     await assert.rejects(buildVercel({rootDirectory: root, env}), /real directories/);
     assert.equal(await readFile(join(target, 'important.txt'), 'utf8'), 'preserve');
+  }
+});
+
+test('explicit preview mode builds isolated static assets without a backend or external API route', async t => {
+  const root = await fixture(t);
+  await addPreviewFixture(root);
+  await writeFile(join(root, '.env'), 'PRIVATE_TOKEN=must-not-publish');
+  await mkdir(join(root, '.data'));
+  await writeFile(join(root, '.data', 'database.sqlite'), 'private-existing-data');
+  await writeFile(join(root, 'preview', '.debug-secret'), 'private-debug-data');
+  const result = await buildVercel({rootDirectory: root, env: {VOQRO_PREVIEW: '1', VOQRO_S3_UPLOAD_ORIGIN: 'https://private.s3.ap-south-1.amazonaws.com'}});
+  assert.equal(result.mode, 'preview');
+  assert.equal(result.backendOrigin, null);
+  const config = JSON.parse(await readFile(join(result.output, 'config.json'), 'utf8'));
+  const apiRoute = config.routes.find(route => route.src.includes('api'));
+  assert.equal(apiRoute.dest, '/preview/api-unavailable.json');
+  assert.equal(apiRoute.status, 503);
+  assert.equal(apiRoute.headers['Cache-Control'], 'no-store');
+  assert.equal(apiRoute.headers['Content-Type'], 'application/json; charset=utf-8');
+  assert.equal(config.routes.some(route => /^https?:/.test(route.dest || '')), false);
+  assert.match(config.routes[0].headers['Content-Security-Policy'], /connect-src 'self';/);
+  const html = await readFile(join(result.output, 'static', 'index.html'), 'utf8');
+  assert.ok(html.includes('src="/preview/entry.mjs"'));
+  assert.ok(html.includes('href="/preview/styles.css"'));
+  assert.equal(html.includes('src="/app.js"'), false);
+  assert.ok((await readFile(join(root, 'public', 'index.html'), 'utf8')).includes('src="/app.js"'));
+  assert.deepEqual((await readdir(join(result.output, 'static', 'preview'))).sort(), ['api-unavailable.json', 'api.mjs', 'entry.mjs', 'fixtures.json', 'styles.css']);
+  assert.equal(JSON.parse(await readFile(join(result.output, 'static', 'preview', 'api-unavailable.json'), 'utf8')).preview, true);
+  assert.equal((await readdir(join(result.output, 'static'))).includes('.data'), false);
+  assert.equal((await readdir(join(result.output, 'static'))).includes('.env'), false);
+});
+
+test('connected builds never copy the preview dataset or replace the production entrypoint', async t => {
+  const root = await fixture(t);
+  await addPreviewFixture(root);
+  const result = await buildVercel({rootDirectory: root, env});
+  assert.equal(result.mode, 'connected');
+  assert.equal((await readdir(join(result.output, 'static'))).includes('preview'), false);
+  const html = await readFile(join(result.output, 'static', 'index.html'), 'utf8');
+  assert.ok(html.includes('src="/app.js"'));
+  assert.equal(html.includes('/preview/'), false);
+  await assert.rejects(buildVercel({rootDirectory: root, env: {VOQRO_PREVIEW: '0'}}), /VOQRO_BACKEND_ORIGIN/);
+  assert.throws(() => outputConfiguration({VOQRO_PREVIEW: 'true'}), /VOQRO_PREVIEW/);
+});
+
+test('preview build rejects unmarked workspaces and symlinked preview assets', async t => {
+  for (const invalid of ['real-workspace', 'symlink']) {
+    const root = await fixture(t);
+    await addPreviewFixture(root);
+    if (invalid === 'real-workspace') {
+      await writeFile(join(root, 'preview', 'fixtures.json'), JSON.stringify({schema_version: 1, public: {demo: false}, users: [{id: 'real-owner'}], workspaces: {'real-owner': {demo: false}}}));
+    } else {
+      await rm(join(root, 'preview', 'api.mjs'));
+      await writeFile(join(root, '.env'), 'PRIVATE_TOKEN=must-not-publish');
+      await symlink(join(root, '.env'), join(root, 'preview', 'api.mjs'));
+    }
+    await assert.rejects(buildVercel({rootDirectory: root, env: {VOQRO_PREVIEW: '1'}}), invalid === 'real-workspace' ? /demonstration workspaces/ : /regular files/);
+    assert.deepEqual(await readdir(join(root, '.vercel')), []);
+  }
+});
+
+test('committed preview fixtures contain only the fresh seven-role demonstration with providers disconnected', async () => {
+  const fixtures = JSON.parse(await readFile(new URL('../preview/fixtures.json', import.meta.url), 'utf8'));
+  assert.equal(fixtures.public.demo, true);
+  assert.equal(fixtures.base_date, fixtures.generated_at.slice(0, 10));
+  assert.deepEqual(fixtures.users.map(user => user.id).sort(), ['u_brand', 'u_creator', 'u_finance', 'u_manager', 'u_other', 'u_owner', 'u_reviewer']);
+  for (const user of fixtures.users) {
+    const workspace = fixtures.workspaces[user.id];
+    assert.equal(workspace.demo, true);
+    assert.equal(workspace.connections.identity.available, false);
+    assert.equal(workspace.connections.instagram.connected_accounts, 0);
+    assert.equal(workspace.connections.notifications.email, 'Not configured');
   }
 });
