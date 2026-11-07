@@ -5,7 +5,7 @@ import {clerkConfig, createClerkIdentity} from './clerk-identity.mjs';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const random = () => randomBytes(32).toString('base64url');
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const roles = ['owner','manager','reviewer','finance','brand','creator'];
+const roles = ['member','owner','manager','reviewer','finance','brand','creator'];
 const demoIds = new Set(['u_owner','u_manager','u_reviewer','u_finance','u_brand','u_other','u_creator']);
 const authCookie = '__Host-voqro_auth';
 const flowCookie = '__Host-voqro_oidc';
@@ -82,7 +82,7 @@ export function createIdentity({db,row,rows,run,id,now,transaction,requireThat,t
   `);
   let keyCache=null,keyExpiry=0;
   const audit=(actor,action,target,reason)=>run('INSERT INTO identity_audit VALUES(?,?,?,?,?,?)',id('authaudit'),actor,action,target,reason,now());
-  const publicConfig=()=>({provider:cfg.provider==='clerk'?'Clerk':cfg.provider==='password'?'Password':'Cognito',...clerk.status(),configured:!!cfg.configured,available:enabled(),demo:!!cfg.demoMode,sign_in_path:enabled()&&cfg.provider==='clerk'?'/login':enabled()&&cfg.provider!=='password'?'/api/identity/start':null,...(cfg.provider==='password'?{bootstrap_required:enabled()&&passwords.bootstrapRequired(),password_min_length:12,email_verification:'Owner-authorized email; inbox ownership is not independently verified.'}:{}),status:cfg.demoMode?'Demo mode; production sign-in disabled.':cfg.problem||(cfg.provider==='clerk'?'Clerk sign-in available. Agency membership requires an invitation.':cfg.provider==='password'?'Password sign-in available. Registration requires an owner-issued invitation.':'Configured; live provider sign-in must still be verified.'),missing:cfg.missing||[]});
+  const publicConfig=()=>({provider:cfg.provider==='clerk'?'Clerk':cfg.provider==='password'?'Password':'Cognito',...clerk.status(),configured:!!cfg.configured,available:enabled(),demo:!!cfg.demoMode,sign_in_path:enabled()&&cfg.provider==='clerk'?'/login':enabled()&&cfg.provider!=='password'?'/api/identity/start':null,...(cfg.provider==='password'?{bootstrap_required:enabled()&&passwords.bootstrapRequired(),password_min_length:12,email_verification:'Owner-authorized email; inbox ownership is not independently verified.'}:{}),status:cfg.demoMode?'Demo mode; production sign-in disabled.':cfg.problem||(cfg.provider==='clerk'?'Clerk sign-up is open to verified emails. Brand or Creator is optional; staff roles require owner authorization.':cfg.provider==='password'?'Password sign-in available. Registration requires an owner-issued invitation.':'Configured; live provider sign-in must still be verified.'),missing:cfg.missing||[]});
   function owner(u,write=false,req){requireThat(u?.role==='owner',403,'Only the agency owner can manage access.');if(write){const current=row("SELECT u.role FROM users u JOIN identity_accounts a ON a.user_id=u.id WHERE u.id=? AND a.status='Active'",u.id);requireThat(enabled()&&current?.role==='owner',403,'An active production owner is required. Shared demo identities cannot grant production access.');if(req){const active=session(req);requireThat(active?.id===u.id&&active.role==='owner',401,'Your owner session changed. Sign in again before managing access.');}}}
   const ownerTransaction=(u,req,fn)=>transaction(()=>{owner(u,true,req);return fn();});
   function scope(b){requireThat(roles.includes(b.role),400,'Choose a supported role.');let brand=null,creator=null;

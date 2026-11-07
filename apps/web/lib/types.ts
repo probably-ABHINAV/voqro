@@ -1,4 +1,4 @@
-export type Role = 'owner' | 'manager' | 'reviewer' | 'finance' | 'brand' | 'creator';
+export type Role = 'member' | 'owner' | 'manager' | 'reviewer' | 'finance' | 'brand' | 'creator';
 export interface User {id:string;name:string;role:Role;brand_id:string|null;creator_id:string|null;email?:string;organization?:{id:string;name:string;kind:'agency'|'brand'|'creator';parent_id:string|null}}
 export interface Brand {id:string;name:string;industry:string;color:string;[key:string]:any}
 export interface Creator {id:string;name:string;handle:string;niche:string;location:string;language:string;followers:number|null;engagement:number|null;fee?:number;color:string;initials:string;bio:string;available:number|boolean;visibility?:string;portfolio?:string[];metric_source?:string;observed_on?:string|null;sample_size?:number|null;sample_kind?:string;[key:string]:any}

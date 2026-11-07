@@ -4,7 +4,7 @@
 
 - Website: https://voqro.vercel.app, Next.js 16, React 19, Tailwind CSS 4.
 - Backend: Express 5 / Node.js 24 on Azure, HTTPS with Caddy, persistent SQLite and private uploads.
-- Identity: Clerk-only sign-in, profile menu and visible logout. Clerk Organizations is disabled. Local invitations and roles control business access.
+- Identity: Clerk-only sign-in, profile menu and visible logout. Clerk Organizations is disabled. Signup is open to verified emails: new users enter with a personal account immediately and can optionally choose Brand or Creator later. Local roles control business access; invitations can assign existing records or staff roles.
 - Business structure: one agency, Voqro; one imported client, Veda Munch; five imported campaign collaborators. Historical child-workspace rows are archived and inaccessible, preserving audit history and campaign data.
 - AI: Azure OpenAI `gpt-4.1-mini` via VM managed identity. Requests require campaign allowances and reserve estimated cost; uncertain requests are held for reconciliation. AWS remains paused.
 

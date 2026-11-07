@@ -124,6 +124,12 @@ async function api(req,res,path){
  }
  await identity.prepare(req);
  const u=session(req);requireThat(u,401,'Sign in to open your workspace.');
+ // Keep personal-account access before every business module; all other routes fail closed.
+ if(u.role==='member'){
+  if(path==='/api/logout'&&req.method==='POST')return identity.logout(req,res);
+  if(path==='/api/workspace'&&req.method==='GET')return send(res,200,{user:u,demo:false,connections:{identity:identity.publicConfig()},brands:[],creators:[],campaigns:[],assignments:[],deliverables:[],proposals:[],activities:[],leads:[],shortlists:[],finance:null});
+  requireThat(false,403,'This account does not have access to agency business records.');
+ }
  if(await identity.handleAuthed(req,res,path,u))return;
  if(await notifications.handler(req,res,path,u))return;
  if(await optimization.handler(req,res,path,u))return;
@@ -144,7 +150,7 @@ async function api(req,res,path){
   campaigns=campaigns.map(c=>({...c,has_campaign_pack:!!row('SELECT campaign_id FROM campaign_reference_packs WHERE campaign_id=?',c.id)}));
   const assignments=u.role==='creator'?rows('SELECT * FROM assignments WHERE creator_id=?',u.creator_id):rows('SELECT a.* FROM assignments a JOIN campaigns c ON c.id=a.campaign_id'+(u.role==='brand'?' WHERE c.brand_id=?':''),...(u.role==='brand'?[u.brand_id]:[]));
   const allowed=new Set(assignments.map(a=>a.id));const deliverables=rows('SELECT * FROM deliverables').filter(d=>allowed.has(d.assignment_id)).map(d=>{const assignment=assignments.find(a=>a.id===d.assignment_id),latest=delivery.context.latestVersion(d.id),published=row('SELECT source,version_id FROM live_posts WHERE deliverable_id=?',d.id);const verified=latest&&published?.version_id===latest.id&&row("SELECT id FROM instagram_jobs WHERE deliverable_id=? AND version_id=? AND state='Verified'",d.id,latest.id);return {...d,status:verified?'Published':latest&&published?.version_id===latest.id?'Reported live':delivery.context.currentStatus({...d,campaign_id:assignment.campaign_id})};});
-  const approvedCreators=publicCreators(),assignedCreatorIds=new Set(assignments.map(a=>a.creator_id));const workspaceCreators=staff(u)?publicCreators({all:true}):publicCreators({all:true}).filter(c=>approvedCreators.some(p=>p.id===c.id)||assignedCreatorIds.has(c.id));
+  const approvedCreators=publicCreators(),assignedCreatorIds=new Set(assignments.map(a=>a.creator_id));const workspaceCreators=staff(u)?publicCreators({all:true}):publicCreators({all:true}).filter(c=>approvedCreators.some(p=>p.id===c.id)||assignedCreatorIds.has(c.id)||(u.role==='creator'&&u.creator_id===c.id));
   if(u.role==='creator')campaigns=campaigns.map(({budget,proposal_id,accepted_version_id,...c})=>c);
   const proposals=(staff(u)?rows('SELECT * FROM proposals'):u.role==='brand'?rows('SELECT * FROM proposals WHERE brand_id=?',u.brand_id):[]).map(p=>({...p,versions:rows('SELECT * FROM proposal_versions WHERE proposal_id=? ORDER BY version DESC',p.id).map(v=>({...v,payload:JSON.parse(v.payload)}))}));
   const activities=u.role==='creator'?[]:staff(u)?rows('SELECT * FROM activities ORDER BY created DESC LIMIT 20'):rows('SELECT * FROM activities WHERE brand_id=? ORDER BY created DESC LIMIT 20',u.brand_id);

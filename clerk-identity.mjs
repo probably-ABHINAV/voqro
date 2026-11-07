@@ -43,7 +43,7 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
   `);
   const organizations = createOrganizations({db,api,issuer:settings.issuer,call});
   const proofs = new WeakMap();
-  const status = () => ({organization_provider:'Voqro', workspace_model:'single_agency', workspace_switching:false, organizations_enabled: enabled() && cfg.provider === 'clerk' && organizations.enabled(), clerk_migration_available: enabled() && cfg.provider === 'password', clerk_available: enabled(), clerk_link_path: enabled() ? '/account/clerk' : null});
+  const status = () => ({organization_provider:'Voqro', workspace_model:'single_agency', workspace_switching:false, signup_mode:enabled()&&cfg.provider==='clerk'?'open_verified_email':'unavailable', signup_types:['brand','creator'], signup_type_optional:true, organizations_enabled: enabled() && cfg.provider === 'clerk' && organizations.enabled(), clerk_migration_available: enabled() && cfg.provider === 'password', clerk_available: enabled(), clerk_link_path: enabled() ? '/account/clerk' : null});
   async function call(fn) {
     let timer;
     try { return await Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('timeout')), 10000); })]); }
@@ -95,6 +95,19 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
     if (binding?.user_id !== userId) return false;
     try { allowed(userId, verified); return true; } catch { return false; }
   }
+  function publicMembership(input,verified){
+    const role=input.signup_type||'member';
+    requireThat(['member','brand','creator'].includes(role),400,'Choose Brand, Creator, or continue without choosing.');
+    let brandId=null,creatorId=null;
+    if(role==='brand'){
+      requireThat(typeof input.brand_name==='string'&&input.brand_name.trim().length>0&&input.brand_name.trim().length<=160,400,'Enter your brand name (up to 160 characters).');
+      brandId=id('brand');run('INSERT INTO brands(id,name,industry,color) VALUES(?,?,?,?)',brandId,input.brand_name.trim(),'','#c5b5a0');
+    }else if(role==='creator'){
+      creatorId=id('creator');const initials=verified.name.trim().split(/\s+/).slice(0,2).map(s=>s[0]||'').join('').toUpperCase();
+      run('INSERT INTO creators(id,name,handle,niche,location,language,followers,engagement,fee,color,initials,bio,available) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',creatorId,verified.name,'','','','',null,null,null,'#c5b5a0',initials,'',null);
+    }
+    return {role,brandId,creatorId};
+  }
   async function handlePublic(req, res, path) {
     if (!['/api/identity/clerk/link', '/api/identity/clerk/exchange'].includes(path)) return false;
     requireThat(req.method === 'POST', 405, 'Use POST for Clerk sign-in.');
@@ -124,24 +137,41 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
         return {linked: true};
       }
       if (!binding) {
-        // Existing emails must go through explicit password reauthentication;
-        // only a new, invited email can create an application membership here.
+        // Never merge an existing membership or trust client-supplied staff roles.
         requireThat(!row('SELECT user_id FROM identity_accounts WHERE email=?', verified.email), 403, 'This existing membership must be linked before Clerk sign-in is activated. Contact the owner.');
         const invite = row("SELECT * FROM identity_invitations WHERE email=? AND status='Pending' AND expires>?", verified.email, Date.now());
-        requireThat(invite, 403, 'Your verified email needs an active invitation from the agency owner.');
+        let role=invite?.role,brandId=invite?.brand_id||null,creatorId=invite?.creator_id||null;
+        if(!invite){
+          ({role,brandId,creatorId}=publicMembership(input,verified));
+        }
         const uid = id('member');
-        run('INSERT INTO users(id,name,role,brand_id,creator_id) VALUES(?,?,?,?,?)', uid, verified.name, invite.role, invite.brand_id, invite.creator_id);
+        run('INSERT INTO users(id,name,role,brand_id,creator_id) VALUES(?,?,?,?,?)', uid, verified.name, role, brandId, creatorId);
         run('INSERT INTO identity_accounts VALUES(?,?,?,?,?,?)', uid, settings.issuer, verified.subject, verified.email, 'Active', now());
         run('INSERT INTO clerk_bindings VALUES(?,?,?,?,?)', uid, settings.issuer, verified.subject, verified.email, now());
-        run("UPDATE identity_invitations SET status='Accepted',accepted_by=?,accepted_at=? WHERE id=?", uid, now(), invite.id);
-        run('DELETE FROM password_invitation_tokens WHERE invitation_id=?', invite.id);
-        organizations.queueInvitation(uid,invite);
-        audit(uid, 'accept-clerk-invitation', invite.id, 'Verified Clerk email matched an owner-issued invitation.');
+        if(invite){
+          run("UPDATE identity_invitations SET status='Accepted',accepted_by=?,accepted_at=? WHERE id=?", uid, now(), invite.id);
+          run('DELETE FROM password_invitation_tokens WHERE invitation_id=?', invite.id);
+          organizations.queueInvitation(uid,invite);
+          audit(uid, 'accept-clerk-invitation', invite.id, 'Verified Clerk email matched an owner-issued invitation.');
+        }else{
+          if(organizations.enabled()){
+            const agency=organizations.root();requireThat(agency,503,'Agency access is temporarily unavailable. Please retry.');
+            run('INSERT INTO workspace_org_members VALUES(?,?,?)',agency.id,uid,now());
+          }
+          audit(uid,'self-register',uid,'Verified email registered with isolated '+role+' access.');
+        }
         binding = {user_id: uid};
       }
       const account = row("SELECT * FROM identity_accounts WHERE user_id=? AND status='Active'", binding.user_id);
       requireThat(account?.email === verified.email, 403, 'This membership is disabled or its verified email has changed.');
       allowed(binding.user_id, verified);
+      const current=row('SELECT * FROM users WHERE id=?',binding.user_id);
+      if(current.role==='member'&&input.signup_type&&input.signup_type!=='member'){
+        if(organizations.enabled())organizations.scope(current,organizations.root()?.id);
+        const membership=publicMembership(input,verified);
+        run('UPDATE users SET role=?,brand_id=?,creator_id=? WHERE id=?',membership.role,membership.brandId,membership.creatorId,current.id);
+        audit(current.id,'choose-account-type',current.id,'Member selected isolated '+membership.role+' access.');
+      }
       return {userId:binding.user_id};
     });
     if(linking){send(res,200,result);return true;}

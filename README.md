@@ -1,6 +1,6 @@
 # Voqro
 
-Voqro is an agency operating system with a Next.js 16 / React 19 / Tailwind CSS 4 frontend in `apps/web` and an Express 5 backend on Node.js 24. Production uses Clerk sign-in with backend-managed roles and scoped invitations. It includes sales, campaign delivery, private media review, workflow, finance and reporting. Read [the full-app guide](docs/full-app.md) for development and deployment. Live external-provider verification and the blueprint’s real-campaign completion evidence remain outstanding.
+Voqro is an agency operating system with a Next.js 16 / React 19 / Tailwind CSS 4 frontend in `apps/web` and an Express 5 backend on Node.js 24. Production uses Clerk sign-in, open verified-email signup, backend-managed roles and optional scoped invitations. It includes sales, campaign delivery, private media review, workflow, finance and reporting. Read [the full-app guide](docs/full-app.md) for development and deployment. Live external-provider verification and the blueprint’s real-campaign completion evidence remain outstanding.
 
 ## Full application
 
