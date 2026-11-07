@@ -11,7 +11,8 @@ export function clerkConfig(env = process.env) {
   try {
     const issuer = new URL(cfg.issuer), origin = new URL(cfg.baseURL);
     const local = env.AUTH_ALLOW_INSECURE_LOCAL === '1' && origin.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname);
-    if (issuer.protocol !== 'https:' || issuer.origin !== cfg.issuer || issuer.username || issuer.password || origin.origin !== cfg.baseURL || origin.username || origin.password || (origin.protocol !== 'https:' && !local) || !/^sk_(test|live)_[A-Za-z0-9]+$/.test(cfg.secretKey)) configured = false;
+    const issuerMatches = issuer.origin === cfg.issuer || (issuer.origin === origin.origin && cfg.issuer === origin.origin + '/__clerk');
+    if (issuer.protocol !== 'https:' || !issuerMatches || issuer.username || issuer.password || origin.origin !== cfg.baseURL || origin.username || origin.password || (origin.protocol !== 'https:' && !local) || !/^sk_(test|live)_[A-Za-z0-9]+$/.test(cfg.secretKey)) configured = false;
   } catch { configured = false; }
   return {...cfg, configured};
 }

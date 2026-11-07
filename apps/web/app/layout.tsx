@@ -6,5 +6,5 @@ export const metadata:Metadata={title:{default:'Voqro · Good work, together',te
 export default function RootLayout({children}:{children:React.ReactNode}){
  if(clerkEnabled&&(!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY||!process.env.CLERK_SECRET_KEY))throw new Error('Clerk is enabled but its application keys are missing.');
  const content=<><a className="skip-link" href="#main-content">Skip to content</a>{children}</>;
- return <html lang="en" data-scroll-behavior="smooth"><body>{clerkEnabled?<ClerkProvider signInUrl="/account/clerk" signUpUrl="/account/clerk?mode=signup">{content}</ClerkProvider>:content}</body></html>;
+ return <html lang="en" data-scroll-behavior="smooth"><body>{clerkEnabled?<ClerkProvider signInUrl="/account/clerk" signUpUrl="/account/clerk?mode=signup" afterSignOutUrl="/login">{content}</ClerkProvider>:content}</body></html>;
 }

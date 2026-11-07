@@ -49,7 +49,7 @@ if values.get('AUTH_PROVIDER')=='clerk':
     assert values.get('CLERK_SECRET_KEY','').startswith('sk_live_'), 'Use the selected production Clerk instance, not development keys.'
     issuer=values.get('CLERK_ISSUER','')
     i=urlsplit(issuer)
-    assert i.scheme=='https' and i.hostname and not i.username and not i.password and not i.path and not i.query and not i.fragment, 'Set the exact production Clerk issuer.'
+    assert i.scheme=='https' and i.hostname and not i.username and not i.password and not i.query and not i.fragment and (not i.path or (i.path=='/__clerk' and i.netloc==u.netloc)), 'Set the exact production Clerk issuer or same-origin /__clerk proxy issuer.'
     connection=sqlite3.connect('file:/var/lib/voqro/production.sqlite?mode=ro', uri=True)
     try:
         missing=connection.execute("SELECT COUNT(*) FROM identity_accounts a LEFT JOIN clerk_bindings c ON c.user_id=a.user_id AND c.issuer=? AND c.email=a.email WHERE a.status='Active' AND c.user_id IS NULL",(issuer,)).fetchone()[0]

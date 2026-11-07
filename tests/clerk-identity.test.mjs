@@ -75,6 +75,8 @@ async function fixture(t, extra = {}) {
 test('Clerk config is opt-in and fails closed for demo, missing keys and untrusted origins', () => {
   const env = {AUTH_PROVIDER: 'clerk', CLERK_ISSUER: issuer, CLERK_SECRET_KEY: 'sk_test_example', APP_BASE_URL: origin};
   assert.equal(identityConfig(env).configured, true);
+  assert.equal(identityConfig({...env, CLERK_ISSUER: origin + '/__clerk'}).configured, true);
+  assert.equal(identityConfig({...env, CLERK_ISSUER: 'https://other.example/__clerk'}).configured, false);
   for (const patch of [{CLERK_SECRET_KEY: ''}, {APP_BASE_URL: 'https://agency.example/extra'}, {APP_BASE_URL: 'http://agency.example'}, {CLERK_ISSUER: issuer + '/extra'}, {DEMO_MODE: '1'}]) assert.equal(identityConfig({...env, ...patch}).configured, false);
   assert.equal(clerkConfig({...env, AUTH_PROVIDER: 'password'}).configured, false);
   assert.equal(clerkConfig({...env, AUTH_PROVIDER: 'password', CLERK_MIGRATION_ENABLED: '1'}).configured, true);
@@ -82,6 +84,9 @@ test('Clerk config is opt-in and fails closed for demo, missing keys and untrust
 
 test('official Clerk SDK rejects forged, expired, wrong-instance and wrong-frontend JWTs', async () => {
   assert.equal((await verifyClerkSessionToken(token(), settings)).sub, 'user_owner');
+  const proxyIssuer = origin + '/__clerk';
+  assert.equal((await verifyClerkSessionToken(token({iss: proxyIssuer}), {...settings, issuer: proxyIssuer})).sub, 'user_owner');
+  await assert.rejects(verifyClerkSessionToken(token({iss: proxyIssuer + '/other'}), {...settings, issuer: proxyIssuer}), {status: 401});
   const time = Math.floor(Date.now() / 1000);
   for (const change of [{iss: 'https://other.clerk.accounts.dev'}, {azp: 'https://evil.example'}, {azp: undefined}, {exp: time - 1}, {nbf: time + 100}, {iat: time + 100}, {sid: undefined}, {sub: 'machine_123'}, {sts: 'pending'}, {act: {sub: 'actor'}}]) await assert.rejects(verifyClerkSessionToken(token(change), settings), {status: 401});
   await assert.rejects(verifyClerkSessionToken(token({}, generateKeyPairSync('rsa', {modulusLength: 2048}).privateKey), settings), {status: 401});
