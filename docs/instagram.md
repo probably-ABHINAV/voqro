@@ -28,6 +28,8 @@ Disconnect removes local credentials and blocks queued work. Meta code `190` is 
 
 ## Configuration and activation
 
+For the deployed Next.js application, register `https://voqro.vercel.app/api/instagram/oauth/callback` as the exact OAuth redirect URI. A successful callback returns to `/workspace/instagram`, where the operator selects the account returned by Meta. Account connection does not enable publishing by itself.
+
 Provide these through secure environment settings, never source files or chat:
 
 - `META_APP_ID`: the Meta application ID.
