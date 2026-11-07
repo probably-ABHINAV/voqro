@@ -47,6 +47,7 @@ test('real accounts complete enquiry, proposal, campaign brief and saved tasks t
  await page.getByLabel('Geography',{exact:true}).fill('Mumbai');
  await page.getByLabel('Languages',{exact:true}).fill('English, Hindi');
  await page.getByLabel('Private planning fee (₹)',{exact:true}).fill('2500');
+ await page.getByRole('combobox',{name:'Availability',exact:true}).selectOption('yes');
  await page.getByRole('combobox',{name:'Profile visibility',exact:true}).selectOption('Approved');
  await page.getByLabel('Biography',{exact:true}).fill('A real test record created through the connected catalogue.');
  await page.getByRole('button',{name:'Save creator profile',exact:true}).click();

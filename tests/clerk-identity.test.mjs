@@ -30,7 +30,7 @@ async function fixture(t, extra = {}) {
   const requireThat = (value, status, message) => { if (!value) throw Object.assign(Error(message), {status}); };
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
   const cfg = identityConfig({AUTH_PROVIDER: 'password', APP_BASE_URL: origin, IDENTITY_BOOTSTRAP_EMAIL: 'owner@example.com', IDENTITY_BOOTSTRAP_SECRET: 'a'.repeat(40)});
-  const users = new Map(), sessions = new Map();
+  const users = new Map(), sessions = new Map(), memberships = new Map();
   let providerReads = 0, afterRead;
   function addUser(subject, email, sid = subject.replace('user_', 'sess_')) {
     users.set(subject, {id: subject, firstName: 'Test', primaryEmailAddressId: 'email1', emailAddresses: [{id: 'email1', emailAddress: email, verification: {status: 'verified'}}]});
@@ -38,7 +38,8 @@ async function fixture(t, extra = {}) {
   }
   addUser('user_owner', 'owner@example.com');
   const provider = {
-    users: {getUser: async subject => { providerReads++; if (afterRead) { const fn = afterRead; afterRead = null; fn(); } if (!users.has(subject)) throw Error('missing'); return users.get(subject); }},
+    organizations:{updateOrganizationMembership:async()=>({}),getOrganizationMembershipList:async({organizationId,userId})=>({data:memberships.get(organizationId)?.has(userId[0])?[{organization:{id:organizationId},publicUserData:{userId:userId[0]},role:'org:member'}]:[]}),createOrganizationMembership:async({organizationId,userId})=>{if(!memberships.has(organizationId))memberships.set(organizationId,new Set());memberships.get(organizationId).add(userId);return {}; }},
+    users: {getUserList:async({emailAddress})=>{const data=[...users.values()].filter(u=>u.emailAddresses.some(e=>emailAddress.includes(e.emailAddress)));return {data,totalCount:data.length};},createUser:async({emailAddress})=>{const subject='user_new';addUser(subject,emailAddress[0]);users.get(subject).emailAddresses[0].verification.status='unverified';return users.get(subject);},getUser: async subject => { providerReads++; if (afterRead) { const fn = afterRead; afterRead = null; fn(); } if (!users.has(subject)) throw Error('missing'); return users.get(subject); }},
     sessions: {getSession: async sid => { providerReads++; if (!sessions.has(sid)) throw Error('missing'); return sessions.get(sid); }},
   };
   const send = (res, status, data, headers = {}) => { res.writeHead(status, {'Content-Type': 'application/json', ...headers}); res.end(JSON.stringify(data)); };
@@ -62,14 +63,14 @@ async function fixture(t, extra = {}) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { await new Promise(resolve => server.close(resolve)); db.close(); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  async function request(path, data, cookie = '', jwt, requestOrigin = origin) {
-    const res = await fetch(base + path, {method: data === undefined ? 'GET' : 'POST', headers: {Cookie: cookie, Origin: requestOrigin, 'Content-Type': 'application/json', ...(jwt ? {Authorization: 'Bearer ' + jwt} : {})}, body: data === undefined ? undefined : JSON.stringify(data)});
+  async function request(path, data, cookie = '', jwt, requestOrigin = origin, organizationId) {
+    const res = await fetch(base + path, {method: data === undefined ? 'GET' : 'POST', headers: {...(organizationId?{'X-Voqro-Organization':organizationId}:{}),Cookie: cookie, Origin: requestOrigin, 'Content-Type': 'application/json', ...(jwt ? {Authorization: 'Bearer ' + jwt} : {})}, body: data === undefined ? undefined : JSON.stringify(data)});
     return {status: res.status, data: await res.json(), cookie: res.headers.getSetCookie().find(v => v.startsWith('__Host-voqro_auth='))?.split(';')[0] || ''};
   }
   const bootstrap = () => request('/api/identity/password/bootstrap', {email: 'owner@example.com', name: 'Owner', password, bootstrap_secret: 'a'.repeat(40)});
   const link = (cookie, jwt = token(), currentPassword = password) => request('/api/identity/clerk/link', {current_password: currentPassword}, cookie, jwt);
   const exchange = (jwt = token(), cookie = '') => request('/api/identity/clerk/exchange', {}, cookie, jwt);
-  return {db, row, run, cfg, identity, users, sessions, request, bootstrap, link, exchange, addUser, afterRead: fn => { afterRead = fn; }, reads: () => providerReads};
+  return {db, row, run, cfg, identity, users, sessions, memberships, request, bootstrap, link, exchange, addUser, afterRead: fn => { afterRead = fn; }, reads: () => providerReads};
 }
 
 test('Clerk config is opt-in and fails closed for demo, missing keys and untrusted origins', () => {
@@ -190,4 +191,50 @@ test('unconfigured Clerk makes no provider requests and does not interfere with 
   assert.equal((await f.link(owner.cookie)).status, 503);
   assert.equal((await f.request('/api/whoami', undefined, owner.cookie)).status, 200);
   assert.equal(f.reads(), 0);
+});
+
+async function organizationFixture(t){
+  const f=await fixture(t),owner=await f.bootstrap();await f.link(owner.cookie);f.cfg.provider='clerk';
+  f.run("INSERT INTO workspace_organizations VALUES(?,?,?,?,?,?,?)",'org_agency',issuer,'agency','voqro',null,'Voqro',new Date().toISOString());
+  for(const [org,brand] of [['org_brandA','brand-a'],['org_brandB','brand-b']])f.run('INSERT INTO workspace_organizations VALUES(?,?,?,?,?,?,?)',org,issuer,'brand',brand,'org_agency',brand,new Date().toISOString());
+  for(const org of ['org_agency','org_brandA']){f.run('INSERT INTO workspace_org_members VALUES(?,?,?)',org,owner.data.user.id,new Date().toISOString());f.memberships.set(org,new Set(['user_owner']));}
+  f.run('INSERT INTO workspace_org_config VALUES(1,1)');
+  return {...f,owner};
+}
+
+test('organization exchange selects a scoped default; brand selection cannot retain owner privileges',async t=>{
+ const f=await organizationFixture(t);
+ const agency=await f.exchange();assert.equal(agency.status,200);assert.equal(agency.data.organization_id,'org_agency');
+ assert.equal((await f.request('/api/whoami',undefined,agency.cookie)).data.role,'owner');
+ const brand=await f.exchange(token({o:{id:'org_brandA',rol:'admin'},org_role:'org:admin'}));assert.equal(brand.status,200);
+ const user=(await f.request('/api/whoami',undefined,brand.cookie)).data;
+ assert.equal(user.role,'brand');assert.equal(user.brand_id,'brand-a');assert.equal(user.organization.id,'org_brandA');
+ assert.equal((await f.request('/api/identity/members',undefined,brand.cookie)).status,403);
+});
+test('unknown organizations and membership in another Clerk organization grant no app access',async t=>{
+ const f=await organizationFixture(t);
+ for(const id of ['org_unknown','org_brandB']){f.memberships.set(id,new Set(['user_owner']));assert.equal((await f.exchange(token({org_id:id}))).status,403);}
+});
+test('provider membership removal and local grant removal deny existing organization cookies',async t=>{
+ const f=await organizationFixture(t),login=await f.exchange(token({org_id:'org_brandA'}));
+ f.memberships.get('org_brandA').delete('user_owner');assert.equal((await f.request('/api/whoami',undefined,login.cookie)).status,403);
+ f.memberships.get('org_brandA').add('user_owner');f.run('DELETE FROM workspace_org_members WHERE organization_id=?','org_brandA');
+ assert.equal((await f.request('/api/whoami',undefined,login.cookie)).status,403);
+});
+test('cross-tab organization mismatch blocks both reads and mutations; missing mutation scope is denied',async t=>{
+ const f=await organizationFixture(t),login=await f.exchange();
+ assert.equal((await f.request('/api/whoami',undefined,login.cookie,undefined,origin,'org_brandA')).status,409);
+ assert.equal((await f.request('/api/identity/invitations',{email:'new@example.com',role:'manager'},login.cookie)).status,409);
+ const invited=await f.request('/api/identity/invitations',{email:'new@example.com',role:'manager'},login.cookie,undefined,origin,'org_agency');assert.equal(invited.status,201);
+});
+test('owner invitations enroll a new verified identity once without making a second login necessary',async t=>{
+ const f=await organizationFixture(t),login=await f.exchange();
+ await f.request('/api/identity/invitations',{email:'new@example.com',role:'brand',brand_id:'brand-a'},login.cookie,undefined,origin,'org_agency');
+ assert.equal(f.memberships.get('org_brandA').has('user_new'),true);
+ assert.equal((await f.exchange(token({sub:'user_new',sid:'sess_new'}))).status,403,'Reserved email must be verified before app access');
+ f.addUser('user_new','new@example.com');
+ const joined=await f.exchange(token({sub:'user_new',sid:'sess_new'}));assert.equal(joined.status,200);assert.equal(joined.data.organization_id,'org_brandA');
+ const user=(await f.request('/api/whoami',undefined,joined.cookie)).data;assert.equal(user.role,'brand');
+ f.run('DELETE FROM workspace_org_members WHERE user_id=?',user.id);
+ assert.equal((await f.exchange(token({sub:'user_new',sid:'sess_new'}))).status,403,'Revoked access must not be regranted on sign-in');
 });

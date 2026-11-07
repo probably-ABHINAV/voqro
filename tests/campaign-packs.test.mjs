@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
+import {importCampaignPack} from '../scripts/import-campaign-pack.mjs';
+import {createCampaignPacks,campaignPackHtml} from '../campaign-packs.mjs';
+const dir=mkdtempSync(join(tmpdir(),'voqro-pack-'));
+process.env.NODE_ENV='test';process.env.DEMO_MODE='0';process.env.DB_PATH=join(dir,'test.sqlite');process.env.UPLOAD_PATH=join(dir,'uploads');process.env.AUTH_PROVIDER='password';
+await import('../server.mjs');
+const db=new DatabaseSync(process.env.DB_PATH);db.exec('PRAGMA foreign_keys=ON');
+const run=(s,...a)=>db.prepare(s).run(...a),row=(s,...a)=>db.prepare(s).get(...a);
+run('INSERT INTO users VALUES(?,?,?,?,?)','pack-owner','Owner','owner',null,null);
+run('INSERT INTO identity_accounts VALUES(?,?,?,?,?,?)','pack-owner','urn:test','owner','owner@example.test','Active',new Date().toISOString());
+const pack={source_id:'test-pack',title:'Private test campaign',brand:{name:'Test brand',industry:'Food'},source_date:'2026-11-05',source_text:'Private representation and full source <script>bad()</script>',products:['A','B','C'],stock:[2,2,2],spare:[0,0,0],creators:['One','Two'].map((name,i)=>({name,handle:'creator_'+i,niche:'Creative',bio:'Source-based observation',concept:'Concept '+name,caption:'#Ad | Gifted by example',script:'Private script '+name,allocation:[1,1,1]})),brief:{goals:'Plan',requirements:'Reel',disclosure:'#Ad'},knowledge:{facts:'Source only'},tasks:[{title:'Confirm agreement',description:'Not signed'}],rollout:[]};
+let imported;
+test('campaign import previews changes, preserves uncertainty, and retries without duplication',()=>{
+ assert.equal(importCampaignPack({db,pack,actorId:'pack-owner'}).dryRun,true);assert.equal(row('SELECT COUNT(*) n FROM brands').n,0);
+ imported=importCampaignPack({db,pack,actorId:'pack-owner',apply:true});
+ const campaign=row('SELECT * FROM campaigns WHERE id=?',imported.campaign_id);assert.equal(campaign.status,'Planning');assert.equal(campaign.budget,null);assert.equal(campaign.start_date,null);assert.equal(campaign.accepted_version_id,null);
+ assert.equal(row('SELECT COUNT(*) n FROM assignments').n,2);assert.equal(row("SELECT COUNT(*) n FROM shipments WHERE status='Pending'").n,2);assert.equal(row("SELECT COUNT(*) n FROM creator_profiles WHERE visibility='Draft'").n,2);
+ assert.equal(row('SELECT COUNT(*) n FROM approvals').n,0);assert.equal(row('SELECT COUNT(*) n FROM content_versions').n,0);
+ assert.equal(importCampaignPack({db,pack,actorId:'pack-owner',apply:true}).unchanged,true);
+ assert.throws(()=>importCampaignPack({db,pack:{...pack,title:'Changed source'},actorId:'pack-owner',apply:true}),/different contents/);
+ assert.equal(row('SELECT COUNT(*) n FROM campaigns').n,1);
+});
+test('pack routes enforce brand and creator scope; full-source export is restricted and escaped',async()=>{
+ const handler=createCampaignPacks({db,requireThat:(v,status,message)=>{if(!v)throw Object.assign(Error(message),{status});},send:(res,status,data)=>{res.status=status;res.data=data;}}).handler;
+ const get=async(u,suffix='')=>{const res={writeHead(status,headers){this.status=status;this.headers=headers;},end(body){this.body=body;}};await handler({method:'GET'},res,'/api/campaign-packs/'+imported.campaign_id+suffix,u);return res;};
+ const ownBrand={role:'brand',brand_id:imported.brand_id};const one={role:'creator',creator_id:imported.creators[0].id};
+ assert.equal((await get(ownBrand)).data.creators.length,2);
+ const filtered=(await get(one)).data;assert.equal(filtered.creators.length,1);assert.equal(filtered.creators[0].name,'One');assert.equal('source_text' in filtered,false);assert.equal('stock' in filtered,false);
+ await assert.rejects(()=>get({role:'brand',brand_id:'other'}),{status:403});await assert.rejects(()=>get({role:'creator',creator_id:'other'}),{status:403});await assert.rejects(()=>get(one,'/document'),{status:403});await assert.rejects(()=>get(ownBrand,'/document'),{status:403});
+ const exportResult=await get({role:'owner'},'/document');assert.match(exportResult.headers['Cache-Control'],/no-store/);assert.match(exportResult.body,/&lt;script&gt;/);assert.doesNotMatch(exportResult.body,/<script>/);
+ assert.doesNotMatch(campaignPackHtml({...pack,title:'<img onerror=bad()>',update_note:'<script>bad</script>'}),/<script>|<img/);
+});
+test.after(()=>{db.close();rmSync(dir,{recursive:true,force:true});});
