@@ -11,6 +11,7 @@ import {createCommerce} from './commerce.mjs';
 import {createOperations} from './operations.mjs';
 import { createDelivery } from './delivery.mjs';
 import http from 'node:http';
+import express from 'express';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -100,6 +101,7 @@ async function api(req,res,path){
   requireThat((req.headers['content-type']||'').includes(path.includes('/chunks/')?'application/octet-stream':'application/json'),415,'Use the required request content type.');
  }
  if(req.method==='GET'&&path==='/api/identity/start')requestGuards.check(req,'auth');
+ if(req.method==='POST'&&path.startsWith('/api/identity/password/'))requestGuards.check(req,'auth');
  if(await identity.handlePublic(req,res,path))return;
  if(await instagram.handlePublic(req,res,path))return;
  if(path==='/api/health')return send(res,200,{ok:true,database:'sqlite',demo:process.env.DEMO_MODE==='1'});
@@ -187,11 +189,21 @@ async function api(req,res,path){
  }
  throw new APIError(404,'This endpoint does not exist.');
 }
-export const server=http.createServer(async(req,res)=>{
+export const app=express();
+app.disable('x-powered-by');
+app.set('trust proxy',false);
+// Preserve raw request streams: upload chunks and the bounded JSON reader are
+// consumed by their existing handlers, never by a global body parser.
+app.use((req,res,next)=>{
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');const cloudConnect=process.env.AWS_MEDIA_ENABLED==='1'&&/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(process.env.AWS_MEDIA_BUCKET||'')?` https://${process.env.AWS_MEDIA_BUCKET}.s3.ap-south-1.amazonaws.com`:'';res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self'"+cloudConnect+"; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
- try{const path=new URL(req.url,'http://localhost').pathname;if(path.startsWith('/api/'))return await api(req,res,path);
-  requireThat(req.method==='GET'||req.method==='HEAD',405,'Method not allowed.');const allowed={'/':'index.html','/app.js':'app.js','/delivery.js':'delivery.js','/operations.js':'operations.js','/commerce.js':'commerce.js','/catalog.js':'catalog.js','/identity.js':'identity.js','/optimization.js':'optimization.js','/workflow.js':'workflow.js','/reporting.js':'reporting.js','/cloud.js':'cloud.js','/instagram.js':'instagram.js','/notifications.js':'notifications.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};const file=allowed[path]||(/^\/art\/[a-z]+\.svg$/.test(path)?path.slice(1):null);requireThat(file,404,'Page not found.');const data=readFileSync(resolve(root,'public',file));res.writeHead(200,{'Content-Type':({'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'})[extname(file)]});res.end(req.method==='HEAD'?undefined:data);
- }catch(e){if(!e.status)console.error(e);send(res,e.status||500,{error:e.status?e.message:'Something went wrong. Please retry.'},e.headers||{});}
+ next();
 });
+app.use('/api',async(req,res)=>api(req,res,new URL(req.originalUrl,'http://localhost').pathname));
+app.use((req,res)=>{
+  const path=new URL(req.originalUrl,'http://localhost').pathname;
+  requireThat(req.method==='GET'||req.method==='HEAD',405,'Method not allowed.');const allowed={'/':'index.html','/app.js':'app.js','/delivery.js':'delivery.js','/operations.js':'operations.js','/commerce.js':'commerce.js','/catalog.js':'catalog.js','/identity.js':'identity.js','/optimization.js':'optimization.js','/workflow.js':'workflow.js','/reporting.js':'reporting.js','/cloud.js':'cloud.js','/instagram.js':'instagram.js','/notifications.js':'notifications.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};const file=allowed[path]||(/^\/art\/[a-z]+\.svg$/.test(path)?path.slice(1):null);requireThat(file,404,'Page not found.');const data=readFileSync(resolve(root,'public',file));res.writeHead(200,{'Content-Type':({'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'})[extname(file)]});res.end(req.method==='HEAD'?undefined:data);
+});
+app.use((e,req,res,next)=>{if(res.headersSent)return next(e);if(!e.status)console.error(e);send(res,e.status||500,{error:e.status?e.message:'Something went wrong. Please retry.'},e.headers||{});});
+export const server=http.createServer(app);
 server.on('close',()=>{operations.stop();workflow.stop();cloud.stop();instagram.stop();notifications.stop();});
 if(process.env.NODE_ENV!=='test'){operations.start();workflow.start();cloud.start();instagram.start();notifications.start();server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>console.log(`Voqro listening on port ${process.env.PORT||3000}. Demo access ${process.env.DEMO_MODE==='1'?'enabled':'disabled'}.`));}

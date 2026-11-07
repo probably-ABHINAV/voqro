@@ -78,6 +78,10 @@ export async function createBackup({database, uploads, destination}) {
       snapshot.exec('PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=ON; BEGIN IMMEDIATE');
       sessionsRemoved = snapshot.prepare('DELETE FROM sessions').run().changes;
       for(const table of ['identity_sessions','identity_flows','instagram_oauth_states'])if(hasTable(snapshot,table))recovery[table+'_removed']=snapshot.prepare(`DELETE FROM ${table}`).run().changes;
+      if(hasTable(snapshot,'password_invitation_tokens')){
+        recovery.password_invitations_revoked=snapshot.prepare("UPDATE identity_invitations SET status='Revoked' WHERE status='Pending' AND id IN (SELECT invitation_id FROM password_invitation_tokens)").run().changes;
+        recovery.password_invitation_tokens_removed=snapshot.prepare('DELETE FROM password_invitation_tokens').run().changes;
+      }
       if(hasTable(snapshot,'instagram_connections'))recovery.instagram_connections_disconnected=snapshot.prepare("UPDATE instagram_connections SET token_cipher=NULL,status='Disconnected',last_error='Restore requires fresh authorisation.'").run().changes;
       if(hasTable(snapshot,'instagram_jobs'))snapshot.exec("UPDATE instagram_jobs SET state=CASE WHEN state='Publishing' THEN 'Publish unknown' WHEN state='CreatingContainer' THEN 'Container unknown' WHEN state IN ('Queued','Awaiting container','Verifying') THEN 'Blocked' ELSE state END,lease_token=NULL,lease_until=NULL,last_error=CASE WHEN state IN ('Queued','Awaiting container','Verifying','Publishing','CreatingContainer') THEN 'Recovered snapshot: reconnect and reconcile provider state before any action.' ELSE last_error END");
       if(hasTable(snapshot,'cloud_uploads'))recovery.cloud_uploads_held=snapshot.prepare("UPDATE cloud_uploads SET state='Needs reconciliation',error='Restored snapshot: reconcile provider upload before resuming.' WHERE state!='Verified'").run().changes;
@@ -100,7 +104,7 @@ export async function createBackup({database, uploads, destination}) {
       format: 1, created: new Date().toISOString(),
       database_sha256: await digest(resolve(dest, 'voqro.sqlite')),
       uploads: assets, recovery, sessions_removed: sessionsRemoved, incomplete_uploads_removed: incompleteRemoved,
-      note: 'Consistent SQLite snapshot and completed immutable media. Credentials, sessions and incomplete local uploads are excluded. Provider connections require fresh authorisation; unfinished cloud work is held for reconciliation. Derived frame/audio cache files are not included.'
+      note: 'Consistent private SQLite snapshot and completed immutable media. Password hashes and membership records are retained. Provider tokens, sessions, invitation secrets and incomplete local uploads are excluded. Provider connections require fresh authorisation; unfinished cloud work is held for reconciliation. Derived frame/audio cache files are not included.'
     };
     await writeFile(resolve(dest, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', {mode: 0o600, flag: 'wx'});
     return await verifyBackup(dest);

@@ -1,0 +1,88 @@
+#cloud-config
+# No passwords, API tokens, or application bootstrap secrets belong in customData.
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - gnupg
+write_files:
+  - path: /etc/systemd/system/docker.service.d/voqro-storage.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      RequiresMountsFor=/var/lib/voqro
+      [Service]
+      ExecStartPre=/usr/bin/mountpoint -q /var/lib/voqro
+  - path: /usr/local/sbin/voqro-install-docker
+    owner: root:root
+    permissions: '0700'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      install -d -m 0755 /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      fingerprint=$(gpg --batch --show-keys --with-colons /etc/apt/keyrings/docker.asc | awk -F: '$1=="fpr" {print $10; exit}')
+      [ "$fingerprint" = 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 ] || { echo 'Docker signing key changed; review required.' >&2; exit 1; }
+      chmod 0644 /etc/apt/keyrings/docker.asc
+      printf '%s\n' 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable' > /etc/apt/sources.list.d/docker.list
+      apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+  - path: /usr/local/sbin/voqro-prepare-swap
+    owner: root:root
+    permissions: '0700'
+    content: |
+      #!/usr/bin/env bash
+      # A small burstable VM has 1 GiB RAM. Swap reduces abrupt OOM failure;
+      # it is slower than RAM and does not establish video-processing capacity.
+      set -euo pipefail
+      swap_path=/swapfile-voqro
+      if [ ! -e "$swap_path" ]; then
+        (set -o noclobber; : > "$swap_path")
+        chmod 0600 "$swap_path"
+        fallocate -l 2G "$swap_path"
+        mkswap "$swap_path"
+      else
+        [ -f "$swap_path" ] && [ ! -L "$swap_path" ] || { echo 'Existing swap path is not a regular file; refusing changes.' >&2; exit 1; }
+        [ "$(stat -c '%U:%a' "$swap_path")" = 'root:600' ] || { echo 'Existing swap file is not root-only; reviewed setup required.' >&2; exit 1; }
+        [ "$(blkid -p -s TYPE -o value "$swap_path" || true)" = swap ] || { echo 'Existing file is not swap; refusing to overwrite it.' >&2; exit 1; }
+      fi
+      swapon --show=NAME --noheadings | grep -Fxq "$swap_path" || swapon "$swap_path"
+      grep -Fq "$swap_path " /etc/fstab || printf '%s none swap sw 0 0\n' "$swap_path" >> /etc/fstab
+  - path: /usr/local/sbin/voqro-mount-data
+    owner: root:root
+    permissions: '0700'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      disk=/dev/disk/azure/scsi1/lun0
+      for attempt in $(seq 1 60); do [ -b "$disk" ] && break; sleep 2; done
+      [ -b "$disk" ] || { echo 'Expected persistent disk LUN0 was not found.' >&2; exit 1; }
+      fs=$(blkid -s TYPE -o value "$disk" || true)
+      if [ -z "$fs" ]; then
+        # Refuse unknown partitions/signatures. Only the new empty data disk is formatted.
+        if [ -n "$(lsblk -nr -o TYPE "$disk" | tail -n +2)" ] || [ -n "$(wipefs -n "$disk")" ]; then
+          echo 'Data disk is not empty; reviewed mounting is required.' >&2; exit 1
+        fi
+        mkfs.ext4 -L voqro-data "$disk"
+      elif [ "$fs" != ext4 ]; then
+        echo 'Existing data disk is not ext4; refusing to format it.' >&2; exit 1
+      fi
+      uuid=$(blkid -s UUID -o value "$disk")
+      install -d -m 0750 /var/lib/voqro
+      if ! grep -Fq "UUID=$uuid " /etc/fstab; then printf 'UUID=%s /var/lib/voqro ext4 defaults,nofail 0 2\n' "$uuid" >> /etc/fstab; fi
+      mountpoint -q /var/lib/voqro || mount /var/lib/voqro
+      [ "$(findmnt -n -o FSTYPE --target /var/lib/voqro)" = ext4 ]
+      chown 1000:1000 /var/lib/voqro
+      chmod 0700 /var/lib/voqro
+runcmd:
+  - [bash, /usr/local/sbin/voqro-mount-data]
+  - [bash, /usr/local/sbin/voqro-prepare-swap]
+  - [bash, /usr/local/sbin/voqro-install-docker]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, docker]
+  - [systemctl, restart, docker]
+  - [install, -d, -m, '0700', /etc/voqro]
+  - [install, -d, -m, '0755', /opt/voqro]
+final_message: "Voqro VM base setup finished. Application environment and deployment are separate."

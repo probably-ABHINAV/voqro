@@ -14,7 +14,7 @@ const encode=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
 function signed(claims,header={alg:'RS256',kid:jwk.kid}){const data=encode(header)+'.'+encode(claims);return data+'.'+sign('RSA-SHA256',Buffer.from(data),key.privateKey).toString('base64url');}
 function claims(extra={}){const time=Math.floor(Date.now()/1000);return {iss:issuer,aud:clientId,sub:'provider-owner',email:'owner@example.com',email_verified:true,nonce:'expected-nonce',iat:time,exp:time+3600,token_use:'id',name:'Verified Owner',...extra};}
 
-async function fixture(t,configuration=cfg){
+async function fixture(t,configuration=cfg,options={}){
  const db=new DatabaseSync(':memory:');db.exec(`PRAGMA foreign_keys=ON;
  CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT,role TEXT,brand_id TEXT,creator_id TEXT);
  CREATE TABLE brands(id TEXT PRIMARY KEY,name TEXT);CREATE TABLE creators(id TEXT PRIMARY KEY,name TEXT);
@@ -26,7 +26,7 @@ async function fixture(t,configuration=cfg){
  const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}};
  const textField=(v,name,max)=>{requireThat(typeof v==='string'&&v.trim()&&v.length<=max,400,name+' is required.');return v.trim();};
  const send=(res,status,data,headers={})=>{res.writeHead(status,{'Content-Type':'application/json',...headers});res.end(JSON.stringify(data));};
- const body=async req=>{let data='';for await(const chunk of req)data+=chunk;return JSON.parse(data||'{}');};
+ const body=async req=>{let data='';for await(const chunk of req)data+=chunk;if(options.beforeBodyReturn)await options.beforeBodyReturn(req);return JSON.parse(data||'{}');};
  const tokens=new Map(),exchanges=[];let keyReads=0;
  const transport=async(url,options)=>{if(url.endsWith('/.well-known/jwks.json')){keyReads++;return {keys:[jwk]};}assert.equal(url,cfg.domain+'/oauth2/token');const form=new URLSearchParams(options.body);exchanges.push(form);const token=tokens.get(form.get('code'));if(!token)throw new Error('invalid grant');return {id_token:token};};
  const identity=createIdentity({db,row,rows,run,id:prefix=>prefix+'_'+randomUUID().replaceAll('-',''),now:()=>new Date().toISOString(),transaction,requireThat,textField,send,body,config:configuration,transport});
@@ -91,4 +91,18 @@ test('expired flows, unverified email and token failures never create a session'
  assert.equal((await f.login({email_verified:false})).status,401);assert.equal((await f.login({nonce:'forged'})).status,401);assert.equal(f.row('SELECT COUNT(*) AS n FROM identity_sessions').n,0);assert.equal(f.row('SELECT COUNT(*) AS n FROM identity_accounts').n,0);
  const unavailable=await f.start();const failedPath='/api/identity/callback?'+new URLSearchParams({state:unavailable.state,code:'missing-provider-code'});const failure=await f.request(failedPath,undefined,unavailable.cookie);assert.equal(failure.status,502);assert.match(failure.data.error,/no session was created/);assert.equal((await f.request(failedPath,undefined,unavailable.cookie)).status,401);assert.equal(f.row('SELECT COUNT(*) AS n FROM identity_sessions').n,0);
  const disabled=await fixture(t,{...cfg,bootstrapEmail:''});assert.equal((await disabled.login()).status,403);assert.equal(disabled.row('SELECT COUNT(*) AS n FROM identity_bootstrap').n,0);
+});
+
+test('owner writes recheck the live role and session after delayed request bodies',async t=>{
+ let gate;const f=await fixture(t,cfg,{beforeBodyReturn:async req=>{if(req.headers['x-test-pause']){gate.entered();await gate.wait;}}});
+ const first=await f.login(),firstUser=(await f.request('/api/whoami',undefined,first.cookie)).data;
+ await f.request('/api/identity/invitations',{email:'second@example.com',role:'owner'},first.cookie);
+ const second=await f.login({email:'second@example.com',sub:'second-owner'});assert.equal(second.status,303);
+ function pause(){let entered,release;const started=new Promise(resolve=>entered=resolve),wait=new Promise(resolve=>release=resolve);gate={entered,wait};return {started,release};}
+ const one=pause();const pendingInvite=f.request('/api/identity/invitations',{email:'forged@example.com',role:'owner'},first.cookie,{'x-test-pause':'1'});await one.started;
+ assert.equal((await f.request('/api/identity/members/revoke-sessions',{id:firstUser.id,reason:'Session revoked while request body is pending'},second.cookie)).status,200);
+ one.release();assert.equal((await pendingInvite).status,401);assert.equal(f.row("SELECT id FROM identity_invitations WHERE email='forged@example.com'"),undefined);
+ const signedAgain=await f.login();const two=pause();const pendingPromotion=f.request('/api/identity/members/update',{id:firstUser.id,role:'owner',status:'Active',reason:'Attempt to retain old privileges'},signedAgain.cookie,{'x-test-pause':'1'});await two.started;
+ assert.equal((await f.request('/api/identity/members/update',{id:firstUser.id,role:'manager',status:'Active',reason:'Demotion while request body is pending'},second.cookie)).status,200);
+ two.release();assert.equal((await pendingPromotion).status,403);assert.equal(f.row('SELECT role FROM users WHERE id=?',firstUser.id).role,'manager');
 });

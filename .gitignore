@@ -9,3 +9,9 @@ test-results-preview/
 __pycache__/
 *.pyc
 .vercel
+
+# Next.js builds and isolated full-app browser artifacts
+.next/
+*.tsbuildinfo
+test-results-modern/
+!.env.fullstack.example

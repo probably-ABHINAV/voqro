@@ -1,0 +1,2 @@
+import Link from 'next/link';
+export default function NotFound(){return <main id="main-content" className="max-w-xl mx-auto p-8 my-20"><p className="eyebrow">A small detour</p><h1>We couldn’t find that page.</h1><p className="muted mt-4 mb-6">Head back to the agency website or open your workspace.</p><div className="flex gap-3"><Link href="/" className="btn">Agency website</Link><Link href="/workspace" className="btn btn-primary">Open workspace</Link></div></main>;}

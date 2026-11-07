@@ -55,3 +55,9 @@ test('bounded allowances include uncertain outcomes and owner cancellation prese
 test('scope is rechecked after remote preflight before any send side effect',async t=>{
  const f=fixture(t);await f.enqueue();f.provider.duringPreflight=()=>f.run("UPDATE users SET brand_id='b2' WHERE id='brand'");await f.module.tick();assert.equal(f.row('SELECT state FROM notification_email_outbox').state,'Cancelled');assert.equal(f.calls.filter(c=>c.action==='SendEmail').length,0);
 });
+
+test('password-authorized emails cannot enqueue or receive SES without independent inbox verification',async t=>{
+ const recipient=fixture(t);recipient.run("UPDATE identity_accounts SET issuer='urn:voqro:password' WHERE user_id='brand'");assert.equal((await recipient.api('/enqueue',{notification_id:'notice1'})).status,409);assert.equal(recipient.calls.length,0);
+ const owner=fixture(t);owner.run("UPDATE identity_accounts SET issuer='urn:voqro:password' WHERE user_id='owner'");assert.equal((await owner.api('/enqueue',{notification_id:'notice1'})).status,403);assert.equal((await owner.api()).data.can_enqueue,false);assert.equal(owner.calls.length,0);
+ const changed=fixture(t);await changed.enqueue();changed.run("UPDATE identity_accounts SET issuer='urn:voqro:password' WHERE user_id='brand'");await changed.module.tick();assert.equal(changed.row('SELECT state FROM notification_email_outbox').state,'Cancelled');assert.equal(changed.calls.length,0);
+});

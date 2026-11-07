@@ -11,7 +11,12 @@
     "test:browser": "playwright test",
     "test:preview": "playwright test --config=playwright.preview.config.mjs",
     "build:vercel": "node scripts/build-vercel.mjs",
-    "backup": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/backup.mjs"
+    "backup": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/backup.mjs",
+    "dev:fullstack": "node --use-env-proxy --env-file-if-exists=.env.fullstack scripts/dev-modern.mjs",
+    "install:web": "npm ci --prefix apps/web",
+    "build:web": "npm run build --prefix apps/web",
+    "check:web": "npm run typecheck --prefix apps/web",
+    "test:modern": "playwright test --config=playwright.modern.config.mjs"
   },
   "engines": {
     "node": "24.x"
@@ -26,6 +31,7 @@
     "@aws-sdk/client-transcribe": "^3.1163.0",
     "@aws-sdk/s3-request-presigner": "^3.1163.0",
     "@smithy/node-http-handler": "^4.14.2",
+    "express": "5.3.0",
     "https-proxy-agent": "^9.1.0"
   }
 }

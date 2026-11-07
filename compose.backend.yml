@@ -1,0 +1,22 @@
+# A persistent single-instance backend behind your trusted HTTPS ingress.
+# This file does not purchase or provision a hosting service.
+services:
+  backend:
+    build: .
+    init: true
+    restart: unless-stopped
+    env_file: .env.backend
+    environment:
+      NODE_ENV: production
+      DEMO_MODE: '0'
+      AUTH_PROVIDER: password
+      COOKIE_SECURE: '1'
+      DB_PATH: /var/lib/voqro/production.sqlite
+      UPLOAD_PATH: /var/lib/voqro/uploads
+      PORT: '3000'
+    ports:
+      - '127.0.0.1:${BACKEND_PORT:-3001}:3000'
+    volumes:
+      - voqro-data:/var/lib/voqro
+volumes:
+  voqro-data:

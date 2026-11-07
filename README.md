@@ -1,6 +1,12 @@
 # Voqro
 
-Voqro is a working agency operating system with public pages and separate agency, brand and creator workspaces. This checkout now contains implementation across all five release workstreams, including optional AWS, Cognito, Meta and SES adapters. **It is still a local demonstration: live provider validation and the blueprint's real-campaign completion evidence are outstanding.** Test fixtures are not business outcomes.
+Voqro is an agency operating system with a Next.js 16 / React 19 / Tailwind CSS 4 frontend in `apps/web` and an Express 5 backend on Node.js 24. It includes real password accounts, scoped invitations, sales, campaign delivery, private media review, workflow, finance and reporting. Read [the full-app guide](docs/full-app.md) for development and deployment. Live external-provider verification and the blueprint’s real-campaign completion evidence remain outstanding.
+
+## Full application
+
+Run `npm ci`, `npm run install:web`, then configure the private `.env.fullstack` from [.env.fullstack.example](.env.fullstack.example) and use `npm run dev:fullstack`. This starts Next.js and Express with a separate persistent local database. Owner setup is at `/setup`; brands and creators join with owner-issued invitations. The new application uses the real backend and has no browser-only business database.
+
+Production uses Vercel for `apps/web` and a persistent backend host. [Azure for Students preparation](infra/azure/README.md) keeps the subscription spending limit enabled. Creating these deployment files does not provision a backend or establish a live account connection. The existing public sample site remains separate until the full backend is connected and verified.
 
 ## Run and verify
 

@@ -20,18 +20,22 @@ Set these through the backend host's runtime configuration or a private Docker `
 | --- | --- |
 | `DEMO_MODE` | `0`; the production image refuses shared demonstration mode |
 | `APP_BASE_URL` | The exact HTTPS **Vercel production website origin**, such as `https://your-verified-domain.example`; no path or trailing URL parameters |
-| `COGNITO_ISSUER` | Actual pool issuer, such as `https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_YOURPOOL` |
-| `COGNITO_CLIENT_ID` | Actual public app-client ID; authorization-code grant with PKCE and no client secret |
-| `COGNITO_DOMAIN` | Actual HTTPS Cognito hosted-login origin |
-| `IDENTITY_BOOTSTRAP_EMAIL` | Exact verified email of the intended first owner |
+| `AUTH_PROVIDER` | `password` for built-in invitation accounts; omit or use `cognito` for the existing Cognito integration |
+| `IDENTITY_BOOTSTRAP_SECRET` | Password mode only: a strong random setup key, supplied privately for the first owner and removed afterward |
+| `COGNITO_ISSUER` | Cognito mode only: actual pool issuer, such as `https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_YOURPOOL` |
+| `COGNITO_CLIENT_ID` | Cognito mode only: actual public app-client ID; authorization-code grant with PKCE and no client secret |
+| `COGNITO_DOMAIN` | Cognito mode only: actual HTTPS Cognito hosted-login origin |
+| `IDENTITY_BOOTSTRAP_EMAIL` | Exact email of the intended first owner; password mode does not independently verify mailbox ownership |
 | `DB_PATH` | Defaults to `/var/lib/voqro/production.sqlite`; any override must stay on persistent storage |
 | `UPLOAD_PATH` | Defaults to `/var/lib/voqro/uploads`; any override must stay on persistent storage |
 | `PORT` / `HOST` | Default `3000` / `0.0.0.0`; match the host's ingress port |
 | `COOKIE_SECURE` | `1` |
 
+Password mode creates the first owner at `/setup` using the configured email and one-time setup key; subsequent members register with scoped invitation links. Password changes require the current password; email password recovery is not implemented. Keep keys and invitation links private.
+
 The image validates the required identity configuration before opening the server. This is a configuration check, not proof that the provider exists or that sign-in succeeds. An empty production database contains no demo records. Never mount a demonstration database into this production container; the application's existing guard rejects it without deleting the source data.
 
-Register `${APP_BASE_URL}/api/identity/callback` as the exact Cognito callback, enable `openid email profile`, and provision the intended owner with verified email and MFA. The Vercel API routing must forward that callback to this backend under the same website origin. Production `__Host-` cookies deliberately have no `Domain` attribute. Use one stable production website origin; a different preview hostname needs its own isolated backend configuration and callback rather than sharing production cookies and data. See [production identity](identity.md) for invitations and revocation.
+For Cognito mode, register `${APP_BASE_URL}/api/identity/callback` as the exact Cognito callback, enable `openid email profile`, and provision the intended owner with verified email and MFA. The Vercel API routing must forward that callback to this backend under the same website origin. Production `__Host-` cookies deliberately have no `Domain` attribute. Use one stable production website origin; a different preview hostname needs its own isolated backend configuration and callback rather than sharing production cookies and data. See [production identity](identity.md) for invitations and revocation.
 
 AWS media/AI, Instagram publication and SES delivery default to disabled in the image. AWS account setup remains separate and is currently paused. Configure optional integration values only when that integration is intentionally being enabled; do not enable them to pass a health check.
 

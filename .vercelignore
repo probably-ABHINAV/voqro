@@ -10,3 +10,8 @@ test-results/
 test-results-preview/
 __pycache__/
 *.pyc
+
+.next/
+**/.next/
+**/node_modules/
+test-results-modern/
