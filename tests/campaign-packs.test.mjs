@@ -31,7 +31,7 @@ test('pack routes enforce brand and creator scope; full-source export is restric
  const ownBrand={role:'brand',brand_id:imported.brand_id};const one={role:'creator',creator_id:imported.creators[0].id};
  assert.equal((await get(ownBrand)).data.creators.length,2);
  const filtered=(await get(one)).data;assert.equal(filtered.creators.length,1);assert.equal(filtered.creators[0].name,'One');assert.equal('source_text' in filtered,false);assert.equal('stock' in filtered,false);
- await assert.rejects(()=>get({role:'brand',brand_id:'other'}),{status:403});await assert.rejects(()=>get({role:'creator',creator_id:'other'}),{status:403});await assert.rejects(()=>get(one,'/document'),{status:403});await assert.rejects(()=>get(ownBrand,'/document'),{status:403});
+ await assert.rejects(()=>get({role:'finance'}),{status:403});await assert.rejects(()=>get({role:'brand',brand_id:'other'}),{status:403});await assert.rejects(()=>get({role:'creator',creator_id:'other'}),{status:403});await assert.rejects(()=>get(one,'/document'),{status:403});await assert.rejects(()=>get(ownBrand,'/document'),{status:403});
  const exportResult=await get({role:'owner'},'/document');assert.match(exportResult.headers['Cache-Control'],/no-store/);assert.match(exportResult.body,/&lt;script&gt;/);assert.doesNotMatch(exportResult.body,/<script>/);
  assert.doesNotMatch(campaignPackHtml({...pack,title:'<img onerror=bad()>',update_note:'<script>bad</script>'}),/<script>|<img/);
 });

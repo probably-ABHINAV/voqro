@@ -9,7 +9,7 @@ export function createCampaignPacks({db,send,requireThat}){
   const match=path.match(/^\/api\/campaign-packs\/([\w-]+)(\/document)?$/);if(!match)return false;
   requireThat(req.method==='GET',405,'Campaign source packs are read-only.');
   const record=row('SELECT p.*,c.brand_id FROM campaign_reference_packs p JOIN campaigns c ON c.id=p.campaign_id WHERE p.campaign_id=?',match[1]);requireThat(record,404,'Campaign pack not found.');
-  const staff=['owner','manager','reviewer','finance'].includes(u.role);
+  const staff=['owner','manager','reviewer'].includes(u.role);
   const assigned=u.role==='creator'&&row('SELECT id FROM assignments WHERE campaign_id=? AND creator_id=?',match[1],u.creator_id);
   requireThat(staff||(u.role==='brand'&&u.brand_id===record.brand_id)||assigned,403,'This campaign pack is outside your workspace.');
   const pack=JSON.parse(record.payload_json);
