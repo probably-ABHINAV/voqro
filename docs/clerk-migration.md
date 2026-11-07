@@ -1,8 +1,10 @@
 # Clerk migration
 
-The user approved this migration on 7 November 2026. Integration is implemented on `clerk-migration`; the live release remains on password authentication. Automatic Vercel deployments are disabled for this staging branch until its isolated backend and keys are configured; main keeps its existing deployment behavior. Existing credentials, memberships and business records are preserved. The GitHub Student Developer Pack lists Clerk Pro while eligible; benefit redemption has not been verified.
+The user approved this migration on 7 November 2026. The production linking screen is now deployed at <https://voqro.vercel.app/account/clerk>, and password authentication remains active. Owner linking and the final authentication cutover are still pending. Existing credentials, memberships and business records are preserved.
 
-The latest user-supplied Dashboard instructions select **`app_3LljzexYxBFra4ABtFTXCRmtg6q`**. This supersedes the earlier application ID, which was never connected. Do not initialize an accountless app or replace working keys. The requested domain is **`voqro.social`**; public DNS returned NXDOMAIN and Vercel did not list it under the existing team when checked. Registration/registrar status is pending user clarification.
+Selected application: **`app_3LljzexYxBFra4ABtFTXCRmtg6q`**. Verified production instance: **`ins_3Lll8Mm5fD4YE9A3q4SdmAQ4iX8`**. The user chose to keep **`voqro.vercel.app`**. Clerk's supported Frontend API proxy is configured at **`https://voqro.vercel.app/__clerk`**, and live discovery reports that exact URL as issuer. No custom domain purchase or DNS changes are needed for this configured proxy route. Earlier guidance that a separate domain was always required was too broad.
+
+The GitHub Student Pack lists Clerk Pro while eligible; redemption remains unverified. Automatic Vercel Git deployments remain disabled for the staging branch, but explicit production deployments were authorized and performed. Main must receive this tested integration before future unrelated main pushes, or those deployments would remove the proxy route.
 
 ## Implemented behavior
 
@@ -15,16 +17,19 @@ The latest user-supplied Dashboard instructions select **`app_3LljzexYxBFra4ABtF
 - Logout blocks reuse of that provider session. Owner revocation and membership changes record a cutoff against the provider session's original creation time, so refreshed tokens cannot bypass revocation. Users must sign out of Clerk and sign in again. Provider termination, banned/locked accounts and changed verified emails deny access.
 - Local sessions last at most one hour, after which users reopen their workspace through Clerk. The initial implementation makes two provider API requests per protected request. Outages/rate limits fail closed with a retryable error. Assess latency and traffic before a larger rollout; any future cache needs an explicit revocation policy.
 
-## Connect the selected application
+## Current connection and release
 
-The user has chat and a browser, but no terminal attached to this environment. CLI login requires a localhost OAuth callback their browser cannot reach. The unused listener was stopped. `clerk doctor --json` confirmed host execution passed, but CLI login and linking are missing. SDK installation does not authenticate the CLI or configure production.
+The user saved production keys in Azure Key Vault `voqro-setup-14829c4d` as `clerk-prod-publishable-key` and `clerk-prod-secret-key`. Their live-key formats and production instance were verified with the official Clerk SDK. A generic Python HTTP request was rejected by Cloudflare; the official SDK worked without altered security settings.
 
-Use the supported manual SDK configuration path:
+The keys were transferred privately to Vercel Production; the secret key uses Vercel's Secret type and the publishable key uses Config because it is intentionally public. The backend secret is stored in root-owned mode0600 `/etc/voqro/backend.env`. No production keys were written to local development `.env` files, printed, or committed. The VM received temporary Key Vault Secrets User access to the single Clerk secret for provisioning; that role assignment was removed and absence verified after installation.
 
-1. Open <https://dashboard.clerk.com/>, select the application above, choose **Development**, then **API keys**. Do not rely on guessed direct application URLs.
-2. In Azure Key Vault `voqro-setup-14829c4d`, choose **Objects → Secrets → Generate/Import → Manual**. Save the development values as `clerk-dev-publishable-key` and `clerk-dev-secret-key`. Do not paste values in chat, commits or screenshots.
-3. Retrieve them only through an authenticated process that writes private configuration without printing values. Do not inspect existing `.env` or `.clerk` claim files. Production keys must not replace development keys.
-4. Verify the issuer from the selected instance's metadata/public key and verify API reachability. Test against a disposable database. Instance keys enable the SDK, but do not grant account-level CLI access to configure production.
+The backend runs exact release **`631858a0d8cc85f69a8ac5a65e7fff78e242254e`** with password login and Clerk linking enabled. A verified pre-migration backup was created under `/var/lib/voqro/backups/before-clerk-link-631858a`. The new container passed its health and identity checks; bootstrap remains closed. The final frontend deployment **`dpl_4Bju8ufwTpXuqLcCzAADfu7yxiaN`** is Ready and aliased to `https://voqro.vercel.app`.
+
+Clerk's production domain **`dmn_3Lll8I0pu4ul3wyf01M9K3BTYMj`** already had the proxy configured. The SDK's `frontendApiProxy` route is now deployed, including static Clerk asset paths. OIDC discovery, frontend environment and client endpoints return200. The frontend's configured issuer contains `/__clerk`; both backend verification and the deployment guard accept only this exact same-origin proxy path or a normal HTTPS issuer origin.
+
+`instance.update({enhancedEmailDeliverability:true})` was accepted to request Clerk-hosted verification delivery without custom sender DNS. The legacy public `auth_config.enhanced_email_deliverability` field still reported false afterward, so actual email arrival remains a live acceptance check; do not claim verification/recovery email delivery has been tested. No test user, impersonated session or email was created by the agent.
+
+CLI account-level authorization remains absent because its localhost OAuth callback is inaccessible from the user's browser. Do not rerun init or create an accountless application. SDK credentials and live proxy checks do not establish CLI login. For future isolated automated provider tests, request separate development keys rather than reusing production credentials.
 
 ### Configuration
 
@@ -33,15 +38,17 @@ Backend during linking:
 ```text
 AUTH_PROVIDER=password
 CLERK_MIGRATION_ENABLED=1
-CLERK_ISSUER=https://<exact-selected-instance-host>
+CLERK_ISSUER=https://voqro.vercel.app/__clerk
 CLERK_SECRET_KEY=<private-instance-secret>
-APP_BASE_URL=<exact-frontend-origin>
+APP_BASE_URL=https://voqro.vercel.app
 ```
 
 Frontend:
 
 ```text
 NEXT_PUBLIC_CLERK_ENABLED=1
+CLERK_FRONTEND_API_PROXY_ENABLED=1
+NEXT_PUBLIC_CLERK_PROXY_URL=https://voqro.vercel.app/__clerk
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<matching-instance-publishable-key>
 CLERK_SECRET_KEY=<private-matching-instance-secret>
 VOQRO_BACKEND_ORIGIN=<persistent-backend-origin>
@@ -51,8 +58,8 @@ Never prefix the secret key with `NEXT_PUBLIC_`. Leave the enable flag unset/`0`
 
 ## Production rollout
 
-1. Confirm domain ownership, attach the chosen domain to the existing Vercel project, and verify DNS/HTTPS before changing the canonical origin. The backend accepts exactly `APP_BASE_URL`; old-host cookies do not transfer to the new host. Redirect the old hostname only after the new origin works.
-2. Configure a production instance in the selected Clerk application, its DNS, allowed URLs, verified email/recovery and intended sign-in methods. Use Dashboard while CLI authorization is unavailable. If account-level CLI access becomes possible, link the selected app, follow `deploy --mode agent --domain voqro.social` and its `nextAction`, then require `deploy status --mode agent` to pass. Dashboard login does not authenticate this environment's CLI.
+1. Keep the current Vercel hostname and verified proxy configuration. If a custom domain is added later, verify its ownership/DNS/HTTPS, update Clerk and the exact canonical origin deliberately, and migrate issuer bindings before switching. Cookies do not transfer between hosts.
+2. Keep email/password verification and recovery as the current configured sign-in methods. Additional OAuth providers need their own production credentials. Verify real email delivery with the owner; the agent must not manufacture production accounts or impersonate users.
 3. Store production keys separately in host secrets. Use the exact production issuer and matching public/secret keys. Do not overwrite local development keys.
 4. Deploy migration code with **password mode retained** and linking enabled against the **production** instance. For each existing member, sign into Voqro, open Account → Connect Clerk sign-in, verify the matching email and reauthenticate with the current Voqro password. Development bindings do not transfer to production.
 5. Confirm all active members, including the owner, have production bindings. `infra/azure/install-app.sh` refuses Clerk activation with development keys, a bootstrap secret, missing owner binding or any unlinked active member. Disabled members need migration before reactivation.
@@ -67,4 +74,6 @@ Official SDK tests use locally signed RSA fixtures. Backend tests cover signatur
 
 The full backend suite passed 149 tests before the final rollback-session hardening; all nine focused Clerk tests passed again after it. Next typecheck and production build pass with Clerk disabled. A real-browser Next/Express test passed owner setup, invitations and the core agency workflow against an isolated database. A second browser test confirmed the disabled Clerk route preserves password sign-in without provider requests or accountless application creation.
 
-Real Clerk sign-in, recovery/OAuth, production DNS and student-plan activation remain unverified. No production cutover has occurred.
+Live browser verification now confirms the real production Clerk sign-in component renders on `/account/clerk` with no page errors or failed Voqro requests, and the original password form remains usable on `/login`. Anonymous linking is rejected with401. All nine Clerk backend tests passed again with the exact proxy issuer and rejection of altered/wrong-origin issuer paths; Next typecheck and production builds passed.
+
+The owner must sign in at `/login`, then open `/account/clerk` in the same browser, create/sign into Clerk using the same email, and confirm their existing Voqro password inside the app. Verify the resulting binding and all-active-member coverage before setting `AUTH_PROVIDER=clerk`. Real authenticated linking, private media under Clerk, verification/recovery delivery, additional OAuth and student-plan activation remain unverified. No final authentication cutover has occurred.
