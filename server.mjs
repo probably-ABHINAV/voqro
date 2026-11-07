@@ -101,7 +101,7 @@ async function api(req,res,path){
   requireThat((req.headers['content-type']||'').includes(path.includes('/chunks/')?'application/octet-stream':'application/json'),415,'Use the required request content type.');
  }
  if(req.method==='GET'&&path==='/api/identity/start')requestGuards.check(req,'auth');
- if(req.method==='POST'&&path.startsWith('/api/identity/password/'))requestGuards.check(req,'auth');
+ if(req.method==='POST'&&(path.startsWith('/api/identity/password/')||path.startsWith('/api/identity/clerk/')))requestGuards.check(req,'auth');
  if(await identity.handlePublic(req,res,path))return;
  if(await instagram.handlePublic(req,res,path))return;
  if(path==='/api/health')return send(res,200,{ok:true,database:'sqlite',demo:process.env.DEMO_MODE==='1'});
@@ -120,6 +120,7 @@ async function api(req,res,path){
   const token=randomBytes(32).toString('hex');run('INSERT INTO sessions VALUES(?,?,?)',hash(token),u.id,Date.now()+86400000);
   return send(res,200,{user:u},{'Set-Cookie':`voqro_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.COOKIE_SECURE==='1'?'; Secure':''}`});
  }
+ await identity.prepare(req);
  const u=session(req);requireThat(u,401,'Sign in to open your workspace.');
  if(await identity.handleAuthed(req,res,path,u))return;
  if(await notifications.handler(req,res,path,u))return;

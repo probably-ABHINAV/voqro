@@ -22,10 +22,11 @@ for line in Path('/etc/voqro/backend.env').read_text().splitlines():
     assert sep and key.strip()==key, 'Use KEY=value lines in backend.env.'
     values[key]=value
 assert values.get('DEMO_MODE')=='0', 'DEMO_MODE=0 is required.'
-assert values.get('AUTH_PROVIDER')=='password', 'This deployment uses explicit password identity.'
+assert values.get('AUTH_PROVIDER') in ('password','clerk'), 'Choose password identity or the verified Clerk migration.'
 u=urlsplit(values.get('APP_BASE_URL',''))
 assert u.scheme=='https' and u.hostname and not u.username and not u.password and u.path in ('','/') and not u.query and not u.fragment, 'APP_BASE_URL must be the exact public Vercel HTTPS origin.'
-assert '@' in values.get('IDENTITY_BOOTSTRAP_EMAIL',''), 'An explicit initial owner email is required.'
+if values.get('AUTH_PROVIDER')=='password':
+    assert '@' in values.get('IDENTITY_BOOTSTRAP_EMAIL',''), 'An explicit initial owner email is required.'
 secret=values.get('IDENTITY_BOOTSTRAP_SECRET','')
 if secret:
     assert len(secret)>=32, 'Use a strong bootstrap secret.'
@@ -42,6 +43,20 @@ else:
 assert values.get('COOKIE_SECURE','1')=='1' and values.get('AUTH_ALLOW_INSECURE_LOCAL','0')!='1', 'Production cookies must remain Secure.'
 assert values.get('DB_PATH','/var/lib/voqro/production.sqlite')=='/var/lib/voqro/production.sqlite', 'Use the mounted persistent database path.'
 assert values.get('UPLOAD_PATH','/var/lib/voqro/uploads')=='/var/lib/voqro/uploads', 'Use the mounted private upload path.'
+if values.get('AUTH_PROVIDER')=='clerk':
+    import sqlite3
+    assert not secret, 'Remove the consumed owner bootstrap secret before Clerk activation.'
+    assert values.get('CLERK_SECRET_KEY','').startswith('sk_live_'), 'Use the selected production Clerk instance, not development keys.'
+    issuer=values.get('CLERK_ISSUER','')
+    i=urlsplit(issuer)
+    assert i.scheme=='https' and i.hostname and not i.username and not i.password and not i.path and not i.query and not i.fragment, 'Set the exact production Clerk issuer.'
+    connection=sqlite3.connect('file:/var/lib/voqro/production.sqlite?mode=ro', uri=True)
+    try:
+        missing=connection.execute("SELECT COUNT(*) FROM identity_accounts a LEFT JOIN clerk_bindings c ON c.user_id=a.user_id AND c.issuer=? AND c.email=a.email WHERE a.status='Active' AND c.user_id IS NULL",(issuer,)).fetchone()[0]
+        owner=connection.execute("SELECT 1 FROM users u JOIN identity_accounts a ON a.user_id=u.id JOIN clerk_bindings c ON c.user_id=u.id WHERE u.role='owner' AND a.status='Active' AND c.issuer=? AND c.email=a.email LIMIT 1",(issuer,)).fetchone()
+    finally:
+        connection.close()
+    assert owner and missing==0, 'Link every active membership to the production Clerk instance before cutover.'
 PY
 release_dir="/opt/voqro/releases/$source_commit"
 if [ ! -d "$release_dir/.git" ]; then

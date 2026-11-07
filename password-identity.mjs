@@ -155,5 +155,17 @@ export function createPasswordIdentity({db, row, rows, run, id, now, transaction
     });
     return {...result, invitation_token: token, registration_url: cfg.baseURL + '/register#' + new URLSearchParams({token, email: address}), email_sent: false, provider_user_created: false};
   }
-  return {handlePublic, handleAuthed, invite, bootstrapRequired};
+  async function reauthenticate(userId, value) {
+    active();
+    throttle('clerk-link:' + userId);
+    const account = row("SELECT p.* FROM password_credentials p JOIN identity_accounts a ON a.user_id=p.user_id WHERE p.user_id=? AND a.status='Active' AND a.issuer=?", userId, issuer);
+    requireThat(await matches(value, account), 401, 'Your current Voqro password is incorrect.');
+    // The caller invokes this closure inside its linking transaction, after
+    // provider calls and password hashing have completed.
+    return () => {
+      const current = row("SELECT p.* FROM password_credentials p JOIN identity_accounts a ON a.user_id=p.user_id WHERE p.user_id=? AND a.status='Active' AND a.issuer=?", userId, issuer);
+      return !!current && current.salt === account.salt && current.password_hash === account.password_hash;
+    };
+  }
+  return {handlePublic, handleAuthed, invite, bootstrapRequired, reauthenticate};
 }
