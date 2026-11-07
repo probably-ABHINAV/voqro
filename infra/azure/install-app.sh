@@ -34,7 +34,7 @@ else:
     try:
         connection=sqlite3.connect('file:/var/lib/voqro/production.sqlite?mode=ro', uri=True)
         with connection:
-            initialized=connection.execute("SELECT 1 FROM identity_bootstrap b JOIN users u ON u.id=b.user_id JOIN identity_accounts a ON a.user_id=u.id WHERE b.id=1 AND u.role='owner' AND a.status='Active'").fetchone()
+            initialized=connection.execute("SELECT 1 FROM identity_bootstrap WHERE id=1 AND EXISTS (SELECT 1 FROM users u JOIN identity_accounts a ON a.user_id=u.id WHERE u.role='owner' AND a.status='Active')").fetchone()
         connection.close()
     except sqlite3.Error:
         initialized=None

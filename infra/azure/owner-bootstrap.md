@@ -75,7 +75,7 @@ The setup URL may differ if the approved frontend origin changes. It must be the
 After the backend confirms bootstrap is consumed and the owner can sign in:
 
 - Disable the Key Vault secret (`az keyvault secret set-attributes --vault-name VAULT_NAME --name voqro-owner-bootstrap --enabled false --output none`). Do not display its value to verify this.
-- Remove the bootstrap secret from the persistent application environment through an explicitly reviewed root-only file update. Keep the bootstrap-complete database marker; do not delete it. Restart only after confirming the container startup check supports completed bootstrap without the initial secret.
+- Remove the bootstrap secret from the persistent application environment through an explicitly reviewed root-only file update. Keep the bootstrap-complete database marker and at least one active owner; do not delete the marker. **Recreate the backend container**, for example through the reviewed installer, so it reads the updated environment file. `docker restart` retains the environment captured when the container was created and therefore does not remove the secret. Verify the existing owner can still sign in after recreation. The initial provisioning helper intentionally refuses to overwrite an existing environment file.
 - Remove the completed Managed Run Command resource and the temporary private local body/bootstrap files after verifying successful provisioning. Preserve the installed root-only environment and database. Do not erase unknown files or existing backups.
 - Retain or remove the bootstrap vault and its vault-scoped permissions according to the user's intended recovery policy; no automatic deletion of unrelated resources.
 
