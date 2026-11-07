@@ -202,23 +202,22 @@ async function organizationFixture(t){
   return {...f,owner};
 }
 
-test('organization exchange selects a scoped default; brand selection cannot retain owner privileges',async t=>{
+test('agency exchange retains the local role and rejects historical child workspace selection',async t=>{
  const f=await organizationFixture(t);
  const agency=await f.exchange();assert.equal(agency.status,200);assert.equal(agency.data.organization_id,'org_agency');
  assert.equal((await f.request('/api/whoami',undefined,agency.cookie)).data.role,'owner');
- const brand=await f.exchange(token({o:{id:'org_brandA',rol:'admin'},org_role:'org:admin'}),'','org_brandA');assert.equal(brand.status,200);
- const user=(await f.request('/api/whoami',undefined,brand.cookie)).data;
- assert.equal(user.role,'brand');assert.equal(user.brand_id,'brand-a');assert.equal(user.organization.id,'org_brandA');
- assert.equal((await f.request('/api/identity/members',undefined,brand.cookie)).status,403);
+ assert.equal((await f.exchange(token({o:{id:'org_brandA',rol:'admin'},org_role:'org:admin'}),'','org_brandA')).status,403);
+ const list=await f.request('/api/organizations',undefined,agency.cookie);
+ assert.equal(list.data.can_manage,false);
 });
 test('unknown organizations and membership in another Clerk organization grant no app access',async t=>{
  const f=await organizationFixture(t);
  for(const id of ['org_unknown','org_brandB']){f.memberships.set(id,new Set(['user_owner']));assert.equal((await f.exchange(token({org_id:id}),'',id)).status,403);}
 });
 test('Clerk organization membership has no effect; local grant removal denies existing workspace cookies',async t=>{
- const f=await organizationFixture(t),login=await f.exchange(token({org_id:'org_brandA'}),'','org_brandA');
+ const f=await organizationFixture(t),login=await f.exchange(token({org_id:'org_brandA'}));
  f.memberships.get('org_brandA').delete('user_owner');assert.equal((await f.request('/api/whoami',undefined,login.cookie)).status,200);
- f.memberships.get('org_brandA').add('user_owner');f.run('DELETE FROM workspace_org_members WHERE organization_id=?','org_brandA');
+ f.memberships.get('org_brandA').add('user_owner');f.run('DELETE FROM workspace_org_members WHERE organization_id=?','org_agency');
  assert.equal((await f.request('/api/whoami',undefined,login.cookie)).status,403);
 });
 test('cross-tab organization mismatch blocks both reads and mutations; missing mutation scope is denied',async t=>{
@@ -234,17 +233,16 @@ test('owner invitations enroll a new verified identity once without making a sec
  f.addUser('user_new','new@example.com');f.users.get('user_new').emailAddresses[0].verification.status='unverified';
  assert.equal((await f.exchange(token({sub:'user_new',sid:'sess_new'}))).status,403,'Reserved email must be verified before app access');
  f.addUser('user_new','new@example.com');
- const joined=await f.exchange(token({sub:'user_new',sid:'sess_new'}));assert.equal(joined.status,200);assert.equal(joined.data.organization_id,'org_brandA');
- const user=(await f.request('/api/whoami',undefined,joined.cookie)).data;assert.equal(user.role,'brand');
+ const joined=await f.exchange(token({sub:'user_new',sid:'sess_new'}));assert.equal(joined.status,200);assert.equal(joined.data.organization_id,'org_agency');
+ const user=(await f.request('/api/whoami',undefined,joined.cookie)).data;assert.equal(user.role,'brand');assert.equal(user.brand_id,'brand-a');assert.equal((await f.request('/api/identity/members',undefined,joined.cookie)).status,403);
  f.run('DELETE FROM workspace_org_members WHERE user_id=?',user.id);
  assert.equal((await f.exchange(token({sub:'user_new',sid:'sess_new'}))).status,403,'Revoked access must not be regranted on sign-in');
 });
 
-test('Clerk organization claims are ignored and backend switching preserves the selected workspace across exchange',async t=>{
+test('Clerk organization claims cannot create or switch away from the agency',async t=>{
  const f=await organizationFixture(t),login=await f.exchange(token({org_id:'org_unrelated',o:{id:'org_unrelated',rol:'admin'}}));
  assert.equal(login.status,200);assert.equal(login.data.organization_id,'org_agency');
- const switched=await f.request('/api/organizations/switch',{organization_id:'org_brandA'},login.cookie,undefined,origin,'org_agency');assert.equal(switched.status,200);
- assert.equal((await f.request('/api/whoami',undefined,login.cookie)).data.role,'brand');
- const refreshed=await f.exchange(token(),login.cookie);assert.equal(refreshed.data.organization_id,'org_brandA');
- assert.equal((await f.request('/api/organizations/switch',{organization_id:'org_brandB'},refreshed.cookie,undefined,origin,'org_brandA')).status,403);
+ const switched=await f.request('/api/organizations/switch',{organization_id:'org_brandA'},login.cookie,undefined,origin,'org_agency');assert.equal(switched.status,410);
+ assert.equal((await f.request('/api/whoami',undefined,login.cookie)).data.role,'owner');
+ const refreshed=await f.exchange(token(),login.cookie);assert.equal(refreshed.data.organization_id,'org_agency');
 });

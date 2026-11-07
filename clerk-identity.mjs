@@ -43,7 +43,7 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
   `);
   const organizations = createOrganizations({db,api,issuer:settings.issuer,call});
   const proofs = new WeakMap();
-  const status = () => ({organization_provider:'Voqro', organizations_enabled: enabled() && cfg.provider === 'clerk' && organizations.enabled(), clerk_migration_available: enabled() && cfg.provider === 'password', clerk_available: enabled(), clerk_link_path: enabled() ? '/account/clerk' : null});
+  const status = () => ({organization_provider:'Voqro', workspace_model:'single_agency', workspace_switching:false, organizations_enabled: enabled() && cfg.provider === 'clerk' && organizations.enabled(), clerk_migration_available: enabled() && cfg.provider === 'password', clerk_available: enabled(), clerk_link_path: enabled() ? '/account/clerk' : null});
   async function call(fn) {
     let timer;
     try { return await Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('timeout')), 10000); })]); }
@@ -176,45 +176,13 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
   const isProviderSession = req => !!row('SELECT token FROM clerk_local_sessions WHERE token=?', tokenHash(req));
   async function prepareInvitation(){return {provider_user_created:false};}
   function scopeSession(req,user){return organizations.enabled()?organizations.scope(user,proofs.get(req)?.organizationId):user;}
-  let provisioning=false;
   async function handleOrganizations(req,res,path,u){
     if(!path.startsWith('/api/organizations'))return false;
-    requireThat(cfg.provider==='clerk'&&enabled()&&organizations.enabled(),503,'Organization workspaces are not configured.');
+    requireThat(cfg.provider==='clerk'&&enabled()&&organizations.enabled(),503,'Agency access is not configured.');
     if(path==='/api/organizations'&&req.method==='GET'){
-      const owner=u.role==='owner'&&u.organization?.kind==='agency';
-      send(res,200,{active:u.organization,organizations:organizations.list(u),can_manage:owner,...(owner?{members:organizations.members().map(({subject,...m})=>m),brands:db.prepare('SELECT id,name FROM brands').all(),creators:db.prepare('SELECT id,name FROM creators').all()}: {})});return true;
+      send(res,200,{active:u.organization,organizations:organizations.list(u),can_manage:false,model:'single_agency'});return true;
     }
-    if(path==='/api/organizations/switch'&&req.method==='POST'){
-      const b=await body(req);requireThat(typeof b?.organization_id==='string',400,'Choose an available workspace.');
-      const user=localSession(req);requireThat(user,401,'Sign in again.');
-      organizations.scope(user,b.organization_id);
-      run('UPDATE clerk_session_organizations SET organization_id=? WHERE token=?',b.organization_id,tokenHash(req));
-      send(res,200,{organization_id:b.organization_id});return true;
-    }
-    requireThat(u.role==='owner'&&u.organization?.kind==='agency',403,'Manage organizations from the agency owner workspace.');
-    requireThat(req.method==='POST',405,'Use POST to manage organizations.');
-    requireThat(!provisioning,409,'Organization provisioning is already running. Retry shortly.');
-    const b=await body(req);requireThat(b&&typeof b==='object'&&!Array.isArray(b),400,'Send an organization object.');
-    provisioning=true;
-    try{
-      if(path==='/api/organizations/provision'){
-        requireThat(['brand','creator','agency'].includes(b.kind),400,'Choose a supported workspace type.');
-        const org=await organizations.provision({kind:b.kind,entityId:b.entity_id,actorId:u.id});
-        audit(u.id,'provision-organization',org.id,'Created or synchronized an explicitly scoped Voqro workspace.');send(res,200,{organization:org});return true;
-      }
-      if(path==='/api/organizations/grant'){
-        requireThat(typeof b.organization_id==='string'&&typeof b.user_id==='string',400,'Choose an organization and member.');
-        await organizations.grant(b.organization_id,b.user_id,u.id);
-        audit(u.id,'grant-organization',b.organization_id,'Granted workspace access to '+b.user_id);send(res,200,{ok:true});return true;
-      }
-      if(path==='/api/organizations/revoke'){
-        requireThat(typeof b.organization_id==='string'&&typeof b.user_id==='string',400,'Choose an organization and member.');
-        requireThat(organizations.organization(b.organization_id)?.kind!=='agency',400,'Manage agency membership from Team access.');
-        run('DELETE FROM workspace_org_members WHERE organization_id=? AND user_id=?',b.organization_id,b.user_id);
-        audit(u.id,'revoke-organization',b.organization_id,'Revoked app workspace access for '+b.user_id);send(res,200,{ok:true});return true;
-      }
-      requireThat(false,404,'Organization endpoint not found.');
-    }finally{provisioning=false;}
+    requireThat(false,410,'Voqro is the agency. Manage client brands, creators and team permissions from their own sections.');
   }
   return {status, prepare, sessionAllowed, scopeSession, handleOrganizations, prepareInvitation, validateInvitation:membership=>{if(organizations.enabled())organizations.invitationOrganization(membership);}, resetMembership:(uid,membership,actorId)=>{if(organizations.enabled()){run('DELETE FROM workspace_org_members WHERE user_id=?',uid);run('DELETE FROM workspace_org_enrollments WHERE user_id=?',uid);organizations.queueInvitation(uid,{...membership,created_by:actorId});}}, isProviderSession, revokeUser, logout, handlePublic};
 }

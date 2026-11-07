@@ -99,3 +99,7 @@ npm run test:modern
 ```
 
 The modern browser suite uses isolated real password accounts and a fresh temporary database; it does not use the sample adapter. Existing API tests continue covering permissions, immutable approvals, uploads, reconciliation and recovery. External Instagram, AI, payment, signing and email provider verification remains separate from application tests.
+
+### Branch previews without a backend
+
+The deployed Next.js project has a production backend configuration. A Vercel Preview build with no `VOQRO_BACKEND_ORIGIN` now renders a disconnected-preview notice linking to the live website. It disables Clerk UI/proxy and returns JSON 503 for API requests. It is a build preview, not an interactive app with saved records. Production builds still reject a missing or invalid backend origin. A functional branch preview needs a separately provisioned backend/database and matching test identity configuration.

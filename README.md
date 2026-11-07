@@ -1,12 +1,12 @@
 # Voqro
 
-Voqro is an agency operating system with a Next.js 16 / React 19 / Tailwind CSS 4 frontend in `apps/web` and an Express 5 backend on Node.js 24. It includes real password accounts, scoped invitations, sales, campaign delivery, private media review, workflow, finance and reporting. Read [the full-app guide](docs/full-app.md) for development and deployment. Live external-provider verification and the blueprint’s real-campaign completion evidence remain outstanding.
+Voqro is an agency operating system with a Next.js 16 / React 19 / Tailwind CSS 4 frontend in `apps/web` and an Express 5 backend on Node.js 24. Production uses Clerk sign-in with backend-managed roles and scoped invitations. It includes sales, campaign delivery, private media review, workflow, finance and reporting. Read [the full-app guide](docs/full-app.md) for development and deployment. Live external-provider verification and the blueprint’s real-campaign completion evidence remain outstanding.
 
 ## Full application
 
 Run `npm ci`, `npm run install:web`, then configure the private `.env.fullstack` from [.env.fullstack.example](.env.fullstack.example) and use `npm run dev:fullstack`. This starts Next.js and Express with a separate persistent local database. Owner setup is at `/setup`; brands and creators join with owner-issued invitations. The new application uses the real backend and has no browser-only business database.
 
-Production uses Vercel for `apps/web` and a persistent backend host. [Azure for Students preparation](infra/azure/README.md) keeps the subscription spending limit enabled. Creating these deployment files does not provision a backend or establish a live account connection. The existing public sample site remains separate until the full backend is connected and verified.
+Production uses Vercel for `apps/web` and a persistent backend host. [Azure for Students preparation](infra/azure/README.md) keeps the subscription spending limit enabled. The live website is https://voqro.vercel.app with an Azure-hosted Express backend, persistent SQLite/private media storage and Clerk-only sign-in. Voqro is the single agency; Veda Munch is a client brand and its five creators are campaign collaborators. See [current release status](docs/release-status.md).
 
 ## Run and verify
 
@@ -34,7 +34,7 @@ Each cloud task already has an isolated checkout. Do not create a worktree unles
 
 ## Vercel website and persistent backend
 
-### Interactive product preview
+### Historical static product preview
 
 Set `VOQRO_PREVIEW=1` in the Vercel **Preview** environment to build the explicitly labelled, static product preview. This mode runs on Vercel without a backend or a computer left running. It includes seven sample personas, creator shortlists, enquiries, proposals and acceptance, campaign views, and tasks. Each browser keeps its own sample changes; **Reset demo** starts a fresh workspace. Other visitors cannot see those changes.
 
@@ -46,11 +46,11 @@ The preview never sends enquiries, connects real accounts, uploads private media
 
 ### Connected application
 
-The deployment target is a **Vercel website with a separate persistent Node backend**. [Vercel deployment instructions](docs/vercel-deployment.md) cover the static build and same-origin API proxy. [Backend hosting instructions](docs/backend-hosting.md) cover the Node 24 container, FFmpeg, private uploads and SQLite storage. The backend remains responsible for authentication, private data and background work.
+The current deployment is a **Next.js Vercel website with a separate persistent Node backend**. [Full-app deployment instructions](docs/full-app.md) cover Next.js and the same-origin API proxy. [Static deployment instructions](docs/vercel-deployment.md) describe the older optional demonstration build. [Backend hosting instructions](docs/backend-hosting.md) cover the Node 24 container, FFmpeg, private uploads and SQLite storage. The backend remains responsible for authentication, private data and background work.
 
-Set `VOQRO_BACKEND_ORIGIN` to the backend's real HTTPS origin in Vercel. Set the backend's `APP_BASE_URL` to the public website origin, enable secure cookies, and configure production identity. Vercel builds fail if the backend origin is missing or invalid. Backend secrets, databases and uploads are not bundled into the website.
+Set `VOQRO_BACKEND_ORIGIN` to the backend's real HTTPS origin in Vercel. Set the backend's `APP_BASE_URL` to the public website origin, enable secure cookies, and configure production identity. Production Vercel builds fail if the backend origin is missing or invalid. Next.js branch previews without a configured backend show a disconnected notice and a link to the live app; API and Clerk proxy requests return 503. They do not receive production credentials or customer data. Backend secrets, databases and uploads are not bundled into the website.
 
-AWS setup is paused at the user's request. Its historical setup notes are not prerequisites for building the Vercel website. Live optional AWS integrations and the existing Cognito production sign-in still need their own configuration before use.
+AWS setup is paused at the user's request. Its historical setup notes are not prerequisites for building the Vercel website. Optional AWS integrations remain unconfigured. Production sign-in uses Clerk, not Cognito.
 
 ## Demonstration and production are separate
 
@@ -58,15 +58,15 @@ AWS setup is paused at the user's request. Its historical setup notes are not pr
 
 Production defaults to demo mode off. A fresh production database starts empty. Startup refuses to use a database containing the shared demo identities in production mode, and refuses demo mode for a database containing production identities. Select new persistent `DB_PATH` and `UPLOAD_PATH` locations or perform a reviewed migration; the application does not erase source data to change modes.
 
-[Cognito identity instructions](docs/identity.md) describe verified-email bootstrap, PKCE sign-in, invitation allowlisting, tenant roles, secure cookies and revocation. The pool's users must be provisioned through its administrative controls; an app invitation alone neither creates a Cognito user nor sends email. Configure a trusted HTTPS origin before external sign-in. Live owner and external-brand onboarding still need to be exercised against the real pool.
+[Cognito identity instructions](docs/identity.md) describe verified-email bootstrap, PKCE sign-in, invitation allowlisting, tenant roles, secure cookies and revocation. The pool's users must be provisioned through its administrative controls; an app invitation alone neither creates a Cognito user nor sends email. Configure a trusted HTTPS origin before external sign-in. This optional adapter is not the production sign-in provider; see [Clerk configuration](docs/clerk-migration.md).
 
 ## Release status and required evidence
 
 | Release | Implemented and locally tested | Still required for the original completion milestone |
 | --- | --- | --- |
-| 1 · Foundation and sales | Editable brands/approved creator profiles, public services/case studies, enquiries, shortlists, versioned proposals, exact-version acceptance, roles and Cognito identity adapter | Live external-user onboarding and an accepted proposal using real identities |
+| 1 · Foundation and sales | Editable brands/approved creator profiles, public services/case studies, enquiries, shortlists, versioned proposals, exact-version acceptance, backend roles and Clerk production sign-in | Live external-user onboarding and an accepted proposal using real identities |
 | 2 · Campaign delivery | Versioned briefs/knowledge, scoped assignments, tasks/dependencies, chunked local and optional S3 multipart uploads, playback, comments, revisions, exact-package approvals, rights and dispatch | Live private-cloud upload/download and a real creator/brand revision cycle; production media safety/decoder isolation review |
-| 3 · AI and Instagram | Durable technical checks, real bounded frame/audio preparation, allowance-controlled Transcribe/Bedrock adapters, Meta OAuth, approved-package publishing/reconciliation, provider-linked insights, trends and reminders | Actual AWS model/language/permissions validation; Meta professional account and a specifically approved real post published and verified live |
+| 3 · AI and Instagram | Durable technical checks, real bounded frame/audio preparation, allowance-controlled Transcribe/Bedrock adapters, Meta OAuth, approved-package publishing/reconciliation, provider-linked insights, trends and reminders | Azure OpenAI is connected; per-campaign allowances and actual media validation remain operator steps. Meta professional account and a specifically approved real post published and verified live |
 | 4 · Commercial operations | Operational invoices, planned milestones, recorded costs, manual receipts/payouts, corrections, contribution, versioned agreements/acknowledgements and scoped report exports | One real paid campaign reconciled against real records; provider-backed payments/signing and statutory tax accounting if required |
 | 5 · Optimisation | Explained hard-filtered matching, configurable weights, evidence/overrides, reliability corrections, comparable history and registered baseline experiments | Actual measured campaign outcomes against an agreed baseline; synthetic uplift is not evidence of improvement |
 
