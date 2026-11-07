@@ -28,6 +28,18 @@ Each cloud task already has an isolated checkout. Do not create a worktree unles
 
 ## Vercel website and persistent backend
 
+### Interactive product preview
+
+Set `VOQRO_PREVIEW=1` in the Vercel **Preview** environment to build the explicitly labelled, static product preview. This mode runs on Vercel without a backend or a computer left running. It includes seven sample personas, creator shortlists, enquiries, proposals and acceptance, campaign views, and tasks. Each browser keeps its own sample changes; **Reset demo** starts a fresh workspace. Other visitors cannot see those changes.
+
+```sh
+npm run test:preview
+```
+
+The preview never sends enquiries, connects real accounts, uploads private media, publishes posts, executes payments or calls paid AI/email providers. Unsupported actions explain that they need the connected application. It is a product demonstration, not a shared business database. Browser storage can be cleared; its contents are not backed up or synchronized across devices. Fresh fixtures are generated in memory by `scripts/generate-preview-fixtures.mjs`, without reading the local working database.
+
+### Connected application
+
 The deployment target is a **Vercel website with a separate persistent Node backend**. [Vercel deployment instructions](docs/vercel-deployment.md) cover the static build and same-origin API proxy. [Backend hosting instructions](docs/backend-hosting.md) cover the Node 24 container, FFmpeg, private uploads and SQLite storage. The backend remains responsible for authentication, private data and background work.
 
 Set `VOQRO_BACKEND_ORIGIN` to the backend's real HTTPS origin in Vercel. Set the backend's `APP_BASE_URL` to the public website origin, enable secure cookies, and configure production identity. Vercel builds fail if the backend origin is missing or invalid. Backend secrets, databases and uploads are not bundled into the website.
@@ -36,7 +48,7 @@ AWS setup is paused at the user's request. Its historical setup notes are not pr
 
 ## Demonstration and production are separate
 
-`DEMO_MODE=1` enables seven clearly labelled shared identities and seeds fictional brands, creators and campaigns. These accounts are useful for local walkthroughs only. Do not expose a demo deployment or enter real confidential records.
+`DEMO_MODE=1` enables seven clearly labelled shared identities and seeds fictional brands, creators and campaigns. These server-backed accounts are useful for local walkthroughs only; do not expose that shared demo backend publicly or enter real confidential records. The opt-in static preview above instead isolates sample changes in each visitor's browser and never connects to that backend.
 
 Production defaults to demo mode off. A fresh production database starts empty. Startup refuses to use a database containing the shared demo identities in production mode, and refuses demo mode for a database containing production identities. Select new persistent `DB_PATH` and `UPLOAD_PATH` locations or perform a reviewed migration; the application does not erase source data to change modes.
 

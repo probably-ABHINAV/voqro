@@ -9,6 +9,7 @@
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.mjs",
     "check": "node scripts/check.mjs",
     "test:browser": "playwright test",
+    "test:preview": "playwright test --config=playwright.preview.config.mjs",
     "build:vercel": "node scripts/build-vercel.mjs",
     "backup": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/backup.mjs"
   },

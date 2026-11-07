@@ -1,8 +1,30 @@
 # Deploy the Voqro website on Vercel
 
-This deployment serves `public/` from Vercel and forwards `/api/` requests to a separately hosted, persistent Voqro backend. The existing application features, authorization, database, private uploads and workers remain in that backend. The Vercel artifact contains static assets and routing configuration; it contains no database, uploaded media, secrets or backend source.
+There are two explicit deployment modes. The default connected mode serves `public/` from Vercel and forwards `/api/` requests to a separately hosted, persistent Voqro backend. The existing application features, authorization, database, private uploads and workers remain in that backend. The Vercel artifact contains static assets and routing configuration; it contains no workspace database, uploaded media, secrets or backend source.
 
-The backend is required. The build deliberately fails when `VOQRO_BACKEND_ORIGIN` is missing or invalid so that an apparently successful deployment cannot silently lose its workspace API. Preparing this configuration does not provision or verify a backend.
+Connected mode requires the backend. The build deliberately fails when `VOQRO_BACKEND_ORIGIN` is missing or invalid so that an apparently successful deployment cannot silently lose its workspace API. Preparing this configuration does not provision or verify a backend. The separately selected product-preview mode below works entirely with illustrative browser-local records.
+
+## Interactive product preview
+
+Set `VOQRO_PREVIEW=1` for an explicit sample preview. It does not require a backend or credentials:
+
+```bash
+VOQRO_PREVIEW=1 npm run build:vercel
+```
+
+The build copies the existing public assets and only the four required files from `preview/`: the entry module, browser API adapter, stylesheet and sample fixtures. It changes the generated HTML entrypoint to initialize the preview adapter before loading the existing application. It leaves the production HTML source unchanged. The normal application API helper delegates to that adapter only when the preview entrypoint installs it; production builds do not include preview files or fixtures.
+
+Visitors can explore sample workspaces and supported local workflows. A permanent notice identifies the preview and explains that edits stay in that browser. The adapter stores changes in browser storage, with a clearly indicated in-memory fallback if storage is unavailable. Reset Demo returns to the original samples. Every visitor starts independently; there are no real accounts or shared server-side records. Provider operations, actual publishing, messages, payments, media processing and file downloads require a connected workspace and remain unavailable in this preview. All direct `/api/` requests return an explicit JSON 503 response; they never fall through to an HTML page or a nonexistent external backend. Preview CSP permits only the same origin, including when an S3 origin is configured for connected mode.
+
+`preview/fixtures.json` is generated from a fresh `DEMO_MODE=1`, `DB_PATH=:memory:` application with a new temporary uploads directory and all provider operations disabled. The generator adds explicitly illustrative campaign briefs, scoped tasks and sample brand knowledge through that isolated application's API. It captures role-scoped GET responses and separate denied-response statuses. It never reads `.env`, the existing `.data` directory or production credentials. To intentionally regenerate those samples:
+
+```bash
+node --disable-warning=ExperimentalWarning scripts/generate-preview-fixtures.mjs
+```
+
+Fixed dates in the source demo are normalized to the generation date; the browser adapter subsequently keeps the relative sample timeline useful when a new preview starts. Regeneration changes sample IDs and timestamps, so review the fixture diff and rerun preview tests.
+
+To deploy a connected application later, remove `VOQRO_PREVIEW` or set it to `0`, supply the real backend origin, and complete the connected release checks below. The build never falls back to sample mode when backend configuration is missing. A sample preview is not evidence that production accounts, persistence, integrations or commercial plan requirements are ready.
 
 ## Why the backend stays on a persistent host
 
@@ -16,6 +38,7 @@ Vercel offers container-based [Daemons](https://vercel.com/kb/guide/vercel-daemo
 
 | Variable | Value |
 | --- | --- |
+| `VOQRO_PREVIEW` | Set exactly `1` only for the browser-local sample preview. Leave unset or use `0` for the connected application. |
 | `VOQRO_BACKEND_ORIGIN` | The backend's public HTTPS origin, for example `https://api.your-domain.com`. No path, query, credentials or nonstandard port. |
 | `VOQRO_S3_UPLOAD_ORIGIN` | Optional: one exact Mumbai S3 bucket origin, such as `https://your-media-bucket.s3.ap-south-1.amazonaws.com`, when direct S3 uploads are enabled on the backend. |
 
@@ -69,4 +92,4 @@ Before release, verify through the public frontend origin:
 - A private media upload can complete, video playback returns correct range responses, and unauthorized users cannot read it. Confirm private responses never report a CDN cache hit.
 - Workers process an authorized local job, survive a restart without duplicate completion, and restore correctly from the existing backup process.
 
-The build tests verify artifact isolation, origin rejection, route coverage and cache/security policy. They do not establish Vercel account authentication, live backend reachability, proxy cookie/range behavior or production release readiness.
+The build tests verify artifact isolation, explicit preview selection, rejection of unmarked sample workspaces, origin rejection, route coverage and cache/security policy. Browser-preview tests exercise the static preview separately from backend tests. These checks do not establish live backend reachability, proxy cookie/range behavior or production release readiness.

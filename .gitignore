@@ -5,6 +5,7 @@ node_modules/
 .vercel/
 playwright-report/
 test-results/
+test-results-preview/
 __pycache__/
 *.pyc
 .vercel
