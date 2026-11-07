@@ -20,8 +20,8 @@ test('integrated modules retain role boundaries and static modules are reachable
 });
 
 test('connections distinguish configuration from verification without leaking private cloud allowances',async()=>{
- const owner=(await request('/api/connections','owner')).data;assert.equal(owner.identity.available,false);assert.equal(owner.instagram.connected_accounts,0);assert.equal(owner.cloud.monthly_limit_cents,500);
- for(const role of ['brand','other','creator','reviewer','finance'])for(const path of ['/api/connections','/api/workspace']){const result=(await request(path,role)).data,c=path.endsWith('workspace')?result.connections:result;assert.equal('monthly_limit_cents' in c.cloud,false,role+' '+path);assert.equal('reservation_cents' in c.cloud,false);assert.equal(c.instagram.connected_accounts,0);}
+ const owner=(await request('/api/connections','owner')).data;assert.equal(owner.identity.available,false);assert.equal(owner.instagram.connected_accounts,0);assert.equal(owner.cloud.monthly_limit_cents,500);assert.equal(owner.backups.configured,false);
+ for(const role of ['brand','other','creator','reviewer','finance'])for(const path of ['/api/connections','/api/workspace']){const result=(await request(path,role)).data,c=path.endsWith('workspace')?result.connections:result;assert.equal('monthly_limit_cents' in c.cloud,false,role+' '+path);assert.equal('reservation_cents' in c.cloud,false);assert.equal(c.instagram.connected_accounts,0);assert.equal('backups' in c,false);}
  const identity=(await request('/api/identity/members','owner')).data;assert.equal(identity.can_manage,false);assert.deepEqual(identity.members,[]);assert.equal((await request('/api/identity/start')).status,503);
 });
 
