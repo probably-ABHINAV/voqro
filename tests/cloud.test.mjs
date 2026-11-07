@@ -53,7 +53,7 @@ async function fixture(options={}){
   async signGet(key,version,seconds){return `https://private-bucket.s3.ap-south-1.amazonaws.com/${key}?versionId=${version}&expires=${seconds}`;},
   async analyse(){modelCalls++;if(options.modelTimeout)throw new Error('Provider timeout');return {payload:options.modelInvalid?{findings:[{...finding,confidence:5}]}:{findings:[finding]},usage:{inputTokens:40,outputTokens:20},request_id:'bedrock-request'};}
  };
- const cloud=createCloud({...shared,delivery,provider,config:{region:'ap-south-1',bucket:'private-bucket',enabled:true,aiEnabled:true,model:'test-model',pricingVerified:true,reservationCents:50,monthlyLimitCents:100,...options.config}});
+ const cloud=createCloud({...shared,delivery,provider,azureProvider:options.azure?provider:undefined,config:{region:'ap-south-1',bucket:'private-bucket',enabled:true,aiEnabled:true,model:'test-model',pricingVerified:true,reservationCents:50,monthlyLimitCents:100,...options.config}});
  delivery.analysisFor=cloud.analysisFor;
  const server=http.createServer(async(req,res)=>{try{const u=row('SELECT * FROM users WHERE id=?',req.headers['x-user']||'owner');requireThat(u,401,'Sign in');if(!await cloud.handler(req,res,new URL(req.url,'http://local').pathname,u)&&!await delivery(req,res,new URL(req.url,'http://local').pathname,u))send(res,404,{error:'Missing'});}catch(e){send(res,e.status||500,{error:e.message});}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const base=`http://127.0.0.1:${server.address().port}`;
@@ -151,5 +151,33 @@ test('an existing provider object must match actual approved bytes, not only its
  const f=await fixture();try{
   f.objects.set('originals/video1',{bytes:Buffer.alloc(video.length),ContentLength:video.length,VersionId:'forged-version',Metadata:{sha256:hash(video)}});
   await assert.rejects(f.cloud.publishingMedia('v1','video'),/bytes differ/);assert.equal(f.row('SELECT * FROM cloud_assets WHERE upload_id=?','video1'),undefined);
+ }finally{await f.close();}
+});
+
+const azureConfig={enabled:false,aiEnabled:false,bucket:'',azureEnabled:true,azureEndpoint:'https://test.openai.azure.com/',azureDeployment:'review',azurePricingVerified:true,azureRegion:'uaenorth'};
+test('Azure review uses local immutable media without AWS, enforces allowance and retains human approval',async()=>{
+ const f=await fixture({azure:true,config:azureConfig});try{
+  const status=(await f.request()).data.status;assert.deepEqual(status.analysis_modes,['local','azure']);
+  assert.equal((await f.request('/analyse',{version_id:'v1',mode:'azure'},'creator')).status,403);
+  assert.equal((await f.request('/analyse',{version_id:'v1',mode:'azure'})).status,409);
+  await f.request('/budget',{campaign_id:'cam1',limit_cents:50});
+  const requested=await f.request('/analyse',{version_id:'v1',mode:'azure'});assert.equal(requested.status,202);
+  assert.equal((await f.request('/analyse',{version_id:'v1',mode:'azure'})).data.id,requested.data.id);
+  await f.cloud.tick();await f.cloud.tick();await f.cloud.tick();
+  const job=f.row('SELECT * FROM cloud_ai_jobs WHERE id=?',requested.data.id),result=JSON.parse(job.result);
+  assert.equal(job.state,'Completed');assert.equal(job.reserved_cents,50);assert.equal(result.engine,'Azure OpenAI');assert.equal(result.ai,true);assert.match(result.coverage,/Audio.*not analysed/);assert.equal(f.modelCalls(),1);assert.equal(f.objects.size,0);assert.equal(f.row('SELECT COUNT(*) n FROM approvals').n,0);
+  assert.equal((await f.request('',undefined,'other')).data.jobs.length,0);
+ }finally{await f.close();}
+});
+test('Azure uncertain response keeps reservation and never repeats a model call',async()=>{
+ const f=await fixture({azure:true,config:azureConfig,modelTimeout:true});try{
+  await f.request('/budget',{campaign_id:'cam1',limit_cents:50});const requested=await f.request('/analyse',{version_id:'v1',mode:'azure'});
+  await f.cloud.tick();await f.cloud.tick();await f.cloud.tick();
+  const job=f.row('SELECT * FROM cloud_ai_jobs WHERE id=?',requested.data.id);assert.equal(job.state,'Needs reconciliation');assert.equal(job.reserved_cents,50);assert.equal(f.modelCalls(),1);
+ }finally{await f.close();}
+});
+test('Azure review stays unavailable without explicit enablement',async()=>{
+ const f=await fixture({azure:true,config:{...azureConfig,azureEnabled:false}});try{
+  await f.request('/budget',{campaign_id:'cam1',limit_cents:50});assert.equal((await f.request('/analyse',{version_id:'v1',mode:'azure'})).status,503);assert.equal(f.modelCalls(),0);
  }finally{await f.close();}
 });

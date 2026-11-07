@@ -1,5 +1,7 @@
 # Private media and evidence-based AI review
 
+Azure OpenAI is now supported independently of the optional AWS adapter. See [Azure AI review](azure-ai.md) for managed identity, caption/frame-only coverage, configuration and spending reservations. The AWS-specific setup and limitations below still apply to AWS operations.
+
 `cloud.mjs` adds an optional AWS adapter to the existing local delivery workflow. It is **implemented and tested with injected provider responses**, but **no AWS identity, bucket or model has been connected or exercised live**. The local frame/audio preparation path runs real ffprobe and ffmpeg. Creating a configuration is not evidence of successful AWS authentication, permissions, model access, CORS or regional language support.
 
 ## Available workflows
