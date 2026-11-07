@@ -22,10 +22,10 @@ async function fixture(t, extra = {}) {
   const db = new DatabaseSync(':memory:');
   db.exec(`PRAGMA foreign_keys=ON;
     CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT,role TEXT,brand_id TEXT,creator_id TEXT);
-    CREATE TABLE brands(id TEXT PRIMARY KEY,name TEXT);
-    CREATE TABLE creators(id TEXT PRIMARY KEY,name TEXT);
+    CREATE TABLE brands(id TEXT PRIMARY KEY,name TEXT,industry TEXT,color TEXT);
+    CREATE TABLE creators(id TEXT PRIMARY KEY,name TEXT,handle TEXT,niche TEXT,location TEXT,language TEXT,followers INTEGER,engagement REAL,fee INTEGER,color TEXT,initials TEXT,bio TEXT,available INTEGER);
     CREATE TABLE sessions(token TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),expires INTEGER);
-    INSERT INTO brands VALUES('brand-a','A'),('brand-b','B');`);
+    INSERT INTO brands(id,name) VALUES('brand-a','A'),('brand-b','B');`);
   const row = (sql, ...args) => db.prepare(sql).get(...args), rows = (sql, ...args) => db.prepare(sql).all(...args), run = (sql, ...args) => db.prepare(sql).run(...args);
   const requireThat = (value, status, message) => { if (!value) throw Object.assign(Error(message), {status}); };
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
@@ -146,7 +146,6 @@ test('Clerk sign-in never bootstraps an owner; invitation enforces brand scope a
   const signedIn = await f.exchange();
   f.addUser('user_brand', 'brand@example.com');
   const jwt = token({sub: 'user_brand', sid: 'sess_brand', org_role: 'org:admin', role: 'owner'});
-  assert.equal((await f.exchange(jwt)).status, 403);
   const invite = await f.request('/api/identity/invitations', {email: 'brand@example.com', role: 'brand', brand_id: 'brand-a'}, signedIn.cookie);
   assert.equal(invite.status, 201);
   assert.equal(invite.data.sign_in_url, origin + '/login');
@@ -245,4 +244,63 @@ test('Clerk organization claims cannot create or switch away from the agency',as
  const switched=await f.request('/api/organizations/switch',{organization_id:'org_brandA'},login.cookie,undefined,origin,'org_agency');assert.equal(switched.status,410);
  assert.equal((await f.request('/api/whoami',undefined,login.cookie)).data.role,'owner');
  const refreshed=await f.exchange(token(),login.cookie);assert.equal(refreshed.data.organization_id,'org_agency');
+});
+
+
+test('verified signup needs no invitation and creates only a private creator scope once',async t=>{
+ const f=await organizationFixture(t);f.addUser('user_public','public@example.com');
+ const jwt=token({sub:'user_public',sid:'sess_public',role:'owner',org_role:'org:admin'});
+ f.users.get('user_public').emailAddresses[0].verification.status='unverified';
+ assert.equal((await f.exchange(jwt)).status,403);
+ f.users.get('user_public').emailAddresses[0].verification.status='verified';
+ const initial=await f.exchange(jwt);assert.equal(initial.status,200);assert.ok(initial.cookie);
+ const personal=(await f.request('/api/whoami',undefined,initial.cookie)).data;assert.equal(personal.role,'member');assert.equal(personal.brand_id,null);assert.equal(personal.creator_id,null);assert.equal(f.row('SELECT COUNT(*) n FROM creators').n,0);
+ const join=()=>f.request('/api/identity/clerk/exchange',{signup_type:'creator',role:'owner',creator_id:'someone-else',brand_id:'brand-a'},'',jwt);
+ const [first,second]=await Promise.all([join(),join()]);assert.equal(first.status,200);assert.equal(second.status,200);
+ const user=(await f.request('/api/whoami',undefined,first.cookie)).data;
+ assert.equal(user.role,'creator');assert.equal(user.brand_id,null);assert.notEqual(user.creator_id,'someone-else');assert.equal(user.organization.id,'org_agency');
+ assert.equal(f.row('SELECT COUNT(*) n FROM creators').n,1);assert.equal(f.row('SELECT COUNT(*) n FROM identity_accounts WHERE email=?','public@example.com').n,1);
+ assert.equal(f.row('SELECT followers FROM creators WHERE id=?',user.creator_id).followers,null);
+ assert.equal((await f.request('/api/identity/members',undefined,first.cookie)).status,403);
+ const repeat=await f.exchange(jwt);assert.equal(repeat.status,200);assert.equal(repeat.data.onboarding_required,undefined);
+ f.run('DELETE FROM workspace_org_members WHERE user_id=?',user.id);
+ assert.equal((await join()).status,403,'Signup must not restore revoked agency access');
+});
+
+test('brand self-signup creates a new brand and cannot claim an existing client or staff role',async t=>{
+ const f=await organizationFixture(t);f.addUser('user_public','public@example.com');const jwt=token({sub:'user_public',sid:'sess_public'});
+ for(const type of ['owner','manager','reviewer','finance'])assert.equal((await f.request('/api/identity/clerk/exchange',{signup_type:type},'',jwt)).status,400);
+ assert.equal((await f.request('/api/identity/clerk/exchange',{signup_type:'brand',brand_name:'  '},'',jwt)).status,400);
+ assert.equal(f.row('SELECT COUNT(*) n FROM brands').n,2);
+ const joined=await f.request('/api/identity/clerk/exchange',{signup_type:'brand',brand_name:'My Brand',brand_id:'brand-a',role:'owner'},'',jwt);assert.equal(joined.status,200);
+ const user=(await f.request('/api/whoami',undefined,joined.cookie)).data;assert.equal(user.role,'brand');assert.notEqual(user.brand_id,'brand-a');assert.equal(user.creator_id,null);
+ assert.equal(f.row('SELECT name FROM brands WHERE id=?',user.brand_id).name,'My Brand');assert.equal(user.organization.id,'org_agency');
+ assert.equal((await f.request('/api/identity/members',undefined,joined.cookie)).status,403);
+ f.run("UPDATE identity_accounts SET status='Disabled' WHERE user_id=?",user.id);
+ assert.equal((await f.request('/api/identity/clerk/exchange',{signup_type:'creator'},'',jwt)).status,403);
+ assert.equal(f.row('SELECT COUNT(*) n FROM brands').n,3);
+});
+
+test('an owner invitation takes precedence over self-selected signup type',async t=>{
+ const f=await organizationFixture(t),owner=await f.exchange();
+ await f.request('/api/identity/invitations',{email:'invited@example.com',role:'brand',brand_id:'brand-a'},owner.cookie,undefined,origin,'org_agency');
+ f.addUser('user_invited','invited@example.com');
+ const joined=await f.request('/api/identity/clerk/exchange',{signup_type:'creator'},'',token({sub:'user_invited',sid:'sess_invited'}));assert.equal(joined.status,200);
+ const user=(await f.request('/api/whoami',undefined,joined.cookie)).data;assert.equal(user.role,'brand');assert.equal(user.brand_id,'brand-a');
+ assert.equal(f.row('SELECT COUNT(*) n FROM creators').n,0);
+});
+
+
+test('choosing no account type completes signup, persists a personal account and preserves revocation',async t=>{
+ const f=await organizationFixture(t);f.addUser('user_personal','personal@example.com');const jwt=token({sub:'user_personal',sid:'sess_personal',role:'owner'});
+ const initial=await f.exchange(jwt);assert.equal(initial.status,200);assert.ok(initial.cookie);
+ const user=(await f.request('/api/whoami',undefined,initial.cookie)).data;
+ assert.equal(user.role,'member');assert.equal(user.brand_id,null);assert.equal(user.creator_id,null);assert.equal(user.organization.id,'org_agency');
+ const again=await f.exchange(jwt);assert.equal(again.status,200);assert.equal(f.row('SELECT COUNT(*) n FROM identity_accounts WHERE email=?','personal@example.com').n,1);
+ assert.equal(f.row('SELECT COUNT(*) n FROM creators').n,0);assert.equal(f.row('SELECT COUNT(*) n FROM brands').n,2);
+ assert.equal((await f.request('/api/identity/clerk/exchange',{signup_type:'owner'},'',jwt)).status,400);
+ assert.equal((await f.request('/api/identity/members',undefined,initial.cookie)).status,403);
+ f.run('DELETE FROM workspace_org_members WHERE user_id=?',user.id);
+ assert.equal((await f.request('/api/identity/clerk/exchange',{signup_type:'creator'},'',jwt)).status,403);
+ assert.equal(f.row('SELECT COUNT(*) n FROM creators').n,0);
 });

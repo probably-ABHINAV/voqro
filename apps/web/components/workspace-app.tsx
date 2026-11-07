@@ -1,4 +1,5 @@
 'use client';
+import {PersonalAccount} from './personal-account';
 import {ClerkWorkspaceGate} from './clerk-workspace-gate';
 import {CampaignPackScreen} from './campaign-pack-screen';
 import {ClerkHeaderControls} from './clerk-header-controls';
@@ -50,6 +51,7 @@ function WorkspaceContent(){
  async function password(event:FormEvent<HTMLFormElement>){event.preventDefault();const form=event.currentTarget;setBusy(true);setAccountError('');try{await api('identity/password/change-password',Object.fromEntries(new FormData(form)));form.reset();setAccount(false);notify('Password updated. Other sessions have been signed out.');}catch(e){setAccountError((e as Error).message);}finally{setBusy(false);}}
  if(loading)return <main id="main-content"><Loading/></main>;
  if(!workspace)return <main id="main-content" className="max-w-2xl mx-auto p-8 my-20"><Logo/><h1 className="mt-12">Let’s connect your workspace.</h1><ErrorNotice message={error||'Sign in to open your workspace.'} onRetry={()=>{setLoading(true);void refresh().catch(()=>{});}}/><div className="flex gap-3 mt-6"><Link className="btn btn-primary" href="/login">Sign in</Link><Link className="btn" href="/">Agency website</Link></div></main>;
+ if(workspace.user.role==='member')return <PersonalAccount name={workspace.user.name}/>;
  const groups=navGroups(workspace.user.role),all=groups.flatMap(g=>g.items),title=all.find(([id])=>id===view)?.[1]||((view.startsWith('delivery:')||view.startsWith('delivery-campaign:'))?'Review studio':view.startsWith('campaign:')?'Campaign workspace':'Workspace');
  const props:ScreenProps={workspace,refresh,notify,navigate};
  const salesViews=['pipeline','proposals','creators','brands','catalog','shortlist'];const workViews=['campaigns','workflow','knowledge','finance','calendar','access','inbox','exceptions'];

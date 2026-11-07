@@ -125,3 +125,20 @@ test('concurrent bootstrap and invitation claims create exactly one membership p
   const data={email:'brand@example.com',name:'Brand',password,token:invitation.data.invitation_token};
   const claimed=await Promise.all([f.request(path+'register',data),f.request(path+'register',data)]);assert.deepEqual(claimed.map(result=>result.status).sort(),[201,409]);assert.equal(f.query('SELECT COUNT(*) n FROM identity_accounts').n,2);assert.equal(f.query('SELECT COUNT(*) n FROM password_invitation_tokens').n,0);
 });
+
+
+test('personal accounts have no business access and creators can see their own unassigned private profile',async t=>{
+ const f=await fixture(t),owner=await f.bootstrap();await f.brand(owner.cookie,'Private Client');
+ for(const id of ['own-creator','other-creator'])f.run('INSERT INTO creators(id,name) VALUES(?,?)',id,id);
+ const invitation=await f.request('/api/identity/invitations',{email:'personal@example.com',role:'member'},owner.cookie);assert.equal(invitation.status,201);
+ const joined=await f.request(path+'register',{email:'personal@example.com',name:'Personal',password,token:invitation.data.invitation_token});assert.equal(joined.status,201);
+ const account=await f.request('/api/workspace',undefined,joined.cookie);assert.equal(account.status,200);assert.equal(account.data.user.role,'member');
+ for(const key of ['brands','creators','campaigns','assignments','deliverables','proposals','activities','leads','shortlists'])assert.deepEqual(account.data[key],[],key);
+ assert.equal(account.data.finance,null);
+ for(const endpoint of ['catalog','connections','organizations','identity/members','reporting','workflow','cloud','instagram','operations','delivery','commerce','optimization','campaign-packs/private','media/private'])assert.equal((await f.request('/api/'+endpoint,undefined,joined.cookie)).status,403,endpoint);
+ assert.equal((await f.request('/api/catalog/brands',{name:'Bypass',industry:'Test'},joined.cookie)).status,403);
+ f.run("UPDATE users SET role='creator',creator_id='own-creator' WHERE id=?",joined.data.user.id);
+ const creator=await f.request('/api/workspace',undefined,joined.cookie);assert.equal(creator.status,200);assert.deepEqual(creator.data.creators.map(c=>c.id),['own-creator']);assert.deepEqual(creator.data.brands,[]);assert.deepEqual(creator.data.campaigns,[]);
+ assert.deepEqual((await f.request('/api/public')).data.creators,[],'Unapproved profiles must stay off the public site');
+ assert.equal((await f.request('/api/logout',{},joined.cookie)).status,200);
+});
