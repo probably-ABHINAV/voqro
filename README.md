@@ -136,7 +136,7 @@ npm run backup -- restore .data/backups/pilot-001 .data/restores/pilot-001
 
 SQLite's online backup API includes committed WAL data. The snapshot copies completed original media, checks SHA-256/size, verifies database integrity/foreign keys and checks package references. It excludes sessions, OAuth flows, partial uploads and usable Meta tokens from the copy; source records remain unchanged. Restores go into a new directory and never overwrite a live workspace. Unfinished provider work is held for review, retaining potentially spent reservations. Reconnect accounts and reconcile uncertain outcomes before enabling workers after restoration.
 
-Derived frame/audio files are not copied; completed reports retain their coverage while unfinished derived work is held. Checksums detect corruption but do not authenticate an untrusted backup. Automated off-site upload/scheduling, cross-account recovery, production RPO/RTO, monitoring and alarm delivery still require an operational setup and drill.
+Derived frame/audio files are not copied; completed reports retain their coverage while unfinished derived work is held. Checksums detect corruption but do not authenticate an untrusted backup. [Private Azure daily backups](docs/azure-backups.md) add bounded off-VM uploads, full download verification, isolated restore checks and a systemd schedule. Cross-account recovery, production RPO/RTO and external alarm delivery still require operational acceptance.
 
 ## AWS and toolkit setup
 

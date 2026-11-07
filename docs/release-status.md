@@ -26,6 +26,6 @@ The Veda Munch pack contains the supplied scripts, captions, creator links, plan
 2. **Signing:** select a signing provider and securely configure its credentials. Current exact-version acknowledgements are not provider-certified signatures. GitHub Student Pack ownership alone does not connect a signing provider.
 3. **Payments:** manual invoices, receipts and payouts are available; no payment processor is connected. A real campaign must be reconciled against actual settlement evidence.
 4. **Campaign acceptance:** invited client/creator onboarding and a real approval/revision cycle need those participants. Real observed metrics are required for optimization results.
-5. **Operations:** backup/verify/restore tooling and pre-release local backups exist; scheduled off-site backups, restore drills and monitoring delivery remain outstanding.
+5. **Operations:** backup/verify/restore tooling and pre-release local backups exist. The Azure backup release adds daily private Blob copies with full readback/isolated restore verification and owner status; see [backup operations](azure-backups.md). External monitoring delivery, cross-region recovery and application-level recovery acceptance remain outstanding.
 
 These are distinct from the deployed app being available. Do not mark the entire release complete by changing status labels or fabricating provider outcomes.

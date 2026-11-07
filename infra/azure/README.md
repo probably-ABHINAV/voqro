@@ -87,3 +87,7 @@ After backend health and TLS pass:
 4. Keep AWS, paid AI, Instagram publishing and email disabled until the relevant credentials/permissions and live checks are completed separately.
 
 Syntax validation and a compiled Bicep template do not prove subscription access, regional capacity, TLS issuance, container execution or a successful live release. Those are explicit deployment checks still to perform.
+
+## Daily private backups
+
+See [Azure backup operations](../../docs/azure-backups.md) and `backups.bicep` for the separate private storage account, container-scoped managed identity, retention and bounded daily verification. These resources preserve the existing VM and AI identity assignment.
