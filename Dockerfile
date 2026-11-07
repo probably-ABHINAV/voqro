@@ -44,7 +44,7 @@ COPY --from=dependencies /opt/voqro/node_modules ./node_modules
 COPY package.json package-lock.json LICENSE ./
 COPY *.mjs ./
 COPY public ./public
-COPY scripts/backup.mjs scripts/migrate-clerk-users.mjs scripts/setup-clerk-organizations.mjs scripts/import-campaign-pack.mjs ./scripts/
+COPY scripts/backup.mjs scripts/migrate-clerk-users.mjs scripts/setup-workspaces.mjs scripts/import-campaign-pack.mjs ./scripts/
 
 COPY <<'JS' /usr/local/bin/voqro-start.mjs
 import {identityConfig} from '/opt/voqro/identity.mjs';

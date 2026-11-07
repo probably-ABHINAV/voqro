@@ -43,7 +43,7 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
   `);
   const organizations = createOrganizations({db,api,issuer:settings.issuer,call});
   const proofs = new WeakMap();
-  const status = () => ({organizations_enabled: enabled() && cfg.provider === 'clerk' && organizations.enabled(), clerk_migration_available: enabled() && cfg.provider === 'password', clerk_available: enabled(), clerk_link_path: enabled() ? '/account/clerk' : null});
+  const status = () => ({organization_provider:'Voqro', organizations_enabled: enabled() && cfg.provider === 'clerk' && organizations.enabled(), clerk_migration_available: enabled() && cfg.provider === 'password', clerk_available: enabled(), clerk_link_path: enabled() ? '/account/clerk' : null});
   async function call(fn) {
     let timer;
     try { return await Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('timeout')), 10000); })]); }
@@ -149,7 +149,12 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
     if(organizations.enabled()){
       await organizations.enroll(result.userId);
       const user=row('SELECT * FROM users WHERE id=?',result.userId);
-      orgId=claims.org_id||claims.o?.id||organizations.defaultOrganization(user);
+      orgId=input.organization_id;
+      if(!orgId&&localSession(req)?.id===user.id){
+        const previous=row('SELECT organization_id FROM clerk_session_organizations WHERE token=?',tokenHash(req));
+        if(previous){try{organizations.scope(user,previous.organization_id);orgId=previous.organization_id;}catch{}}
+      }
+      orgId=orgId||organizations.defaultOrganization(user);
       requireThat(typeof orgId==='string',403,'Select an available organization.');
       await organizations.authorize(user,verified.subject,orgId);
     }
@@ -169,24 +174,7 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
     return true;
   }
   const isProviderSession = req => !!row('SELECT token FROM clerk_local_sessions WHERE token=?', tokenHash(req));
-  async function prepareInvitation(invite){
-    if(!organizations.enabled())return {provider_user_created:false};
-    const orgId=organizations.invitationOrganization(invite);
-    // Required Clerk membership must exist before the first sign-in can finish.
-    // Reserve an email identifier without marking it verified or sending mail.
-    const matches=await call(()=>api().users.getUserList({emailAddress:[invite.email],limit:2}));
-    requireThat(matches.totalCount<=1,409,'More than one Clerk account matches this invitation.');
-    let user=matches.data[0],created=false;
-    if(!user){user=await call(()=>api().users.createUser({emailAddress:[invite.email],emailAddressIdentificationStatus:['reserved'],skipPasswordRequirement:true,privateMetadata:{voqroInvitation:{id:invite.id,issuer:settings.issuer}}}));created=true;}
-    const primary=user.emailAddresses?.find(e=>e.id===user.primaryEmailAddressId)?.emailAddress?.toLowerCase();
-    requireThat(primary===invite.email,409,'The invited email must be the primary address of its Clerk account.');
-    const current=()=>row("SELECT i.id FROM identity_invitations i JOIN identity_accounts a ON a.user_id=i.created_by JOIN users u ON u.id=a.user_id WHERE i.id=? AND i.status='Pending' AND i.expires>? AND a.status='Active' AND u.role='owner'",invite.id,Date.now());
-    requireThat(current(),409,'The invitation or its owner changed.');
-    const memberships=await call(()=>api().organizations.getOrganizationMembershipList({organizationId:orgId,userId:[user.id],limit:10}));
-    if(!memberships.data.some(m=>m.publicUserData?.userId===user.id&&m.organization.id===orgId))await call(()=>api().organizations.createOrganizationMembership({organizationId:orgId,userId:user.id,role:'org:member'}));
-    requireThat(current(),409,'The invitation changed. Business access has not been granted.');
-    return {provider_user_created:created,organization_membership_prepared:true};
-  }
+  async function prepareInvitation(){return {provider_user_created:false};}
   function scopeSession(req,user){return organizations.enabled()?organizations.scope(user,proofs.get(req)?.organizationId):user;}
   let provisioning=false;
   async function handleOrganizations(req,res,path,u){
@@ -195,6 +183,13 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
     if(path==='/api/organizations'&&req.method==='GET'){
       const owner=u.role==='owner'&&u.organization?.kind==='agency';
       send(res,200,{active:u.organization,organizations:organizations.list(u),can_manage:owner,...(owner?{members:organizations.members().map(({subject,...m})=>m),brands:db.prepare('SELECT id,name FROM brands').all(),creators:db.prepare('SELECT id,name FROM creators').all()}: {})});return true;
+    }
+    if(path==='/api/organizations/switch'&&req.method==='POST'){
+      const b=await body(req);requireThat(typeof b?.organization_id==='string',400,'Choose an available workspace.');
+      const user=localSession(req);requireThat(user,401,'Sign in again.');
+      organizations.scope(user,b.organization_id);
+      run('UPDATE clerk_session_organizations SET organization_id=? WHERE token=?',b.organization_id,tokenHash(req));
+      send(res,200,{organization_id:b.organization_id});return true;
     }
     requireThat(u.role==='owner'&&u.organization?.kind==='agency',403,'Manage organizations from the agency owner workspace.');
     requireThat(req.method==='POST',405,'Use POST to manage organizations.');
@@ -205,7 +200,7 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
       if(path==='/api/organizations/provision'){
         requireThat(['brand','creator','agency'].includes(b.kind),400,'Choose a supported workspace type.');
         const org=await organizations.provision({kind:b.kind,entityId:b.entity_id,actorId:u.id});
-        audit(u.id,'provision-organization',org.id,'Created or synchronized an explicitly scoped Clerk organization.');send(res,200,{organization:org});return true;
+        audit(u.id,'provision-organization',org.id,'Created or synchronized an explicitly scoped Voqro workspace.');send(res,200,{organization:org});return true;
       }
       if(path==='/api/organizations/grant'){
         requireThat(typeof b.organization_id==='string'&&typeof b.user_id==='string',400,'Choose an organization and member.');

@@ -1,9 +1,10 @@
 'use client';
 
-import {OrganizationSwitcher, UserButton, useAuth, useClerk} from '@clerk/nextjs';
-import {useState,useEffect} from 'react';
+import {UserButton, useAuth, useClerk} from '@clerk/nextjs';
+import {useState} from 'react';
 import {api} from '@/lib/api';
 import {clerkEnabled} from '@/lib/clerk-config';
+import {WorkspaceSwitcher} from './workspace-switcher';
 import {Button} from './ui';
 
 export function ClerkHeaderControls({organizationsEnabled}:{organizationsEnabled?:boolean}) {
@@ -14,8 +15,6 @@ function ActiveClerkControls({organizationsEnabled}:{organizationsEnabled?:boole
   const {isLoaded, isSignedIn} = useAuth();
   const {signOut} = useClerk();
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [orgs,setOrgs]=useState(!!organizationsEnabled);
-  useEffect(()=>{if(organizationsEnabled!==undefined){setOrgs(organizationsEnabled);return;}if(isSignedIn)void api('identity/config').then(c=>setOrgs(!!c.organizations_enabled)).catch(()=>{});},[organizationsEnabled,isSignedIn]);
   if (!isLoaded || !isSignedIn) return null;
 
   async function logout() {
@@ -29,7 +28,7 @@ function ActiveClerkControls({organizationsEnabled}:{organizationsEnabled?:boole
   }
 
   return <div className="flex items-center gap-3 flex-wrap" role="group" aria-label="Account controls">
-    {orgs&&<OrganizationSwitcher hidePersonal createOrganizationMode="navigation" createOrganizationUrl="/workspace/organizations" afterSelectOrganizationUrl="/workspace" afterLeaveOrganizationUrl="/login"/>}
+    {organizationsEnabled&&<WorkspaceSwitcher/>}
     <UserButton userProfileMode="modal"/>
     <Button onClick={() => void logout()} disabled={busy}>{busy ? 'Logging out…' : 'Log out'}</Button>
     {error && <span role="alert" className="text-sm">{error}</span>}
