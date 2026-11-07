@@ -148,7 +148,7 @@ test('Clerk sign-in never bootstraps an owner; invitation enforces brand scope a
   assert.equal((await f.exchange(jwt)).status, 403);
   const invite = await f.request('/api/identity/invitations', {email: 'brand@example.com', role: 'brand', brand_id: 'brand-a'}, signedIn.cookie);
   assert.equal(invite.status, 201);
-  assert.equal(invite.data.sign_in_url, origin + '/account/clerk');
+  assert.equal(invite.data.sign_in_url, origin + '/login');
   const brand = await f.exchange(jwt); assert.equal(brand.status, 200);
   const who = await f.request('/api/whoami', undefined, brand.cookie);
   assert.equal(who.data.role, 'brand'); assert.equal(who.data.brand_id, 'brand-a');
