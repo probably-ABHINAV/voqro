@@ -1,14 +1,15 @@
 'use client';
 
-import {SignIn, SignUp, UserButton, UserProfile, useAuth, useClerk} from '@clerk/nextjs';
+import {SignIn, SignUp, OrganizationSwitcher, UserButton, UserProfile, useAuth, useClerk} from '@clerk/nextjs';
+import {exchangeClerkSession} from '@/lib/clerk-exchange';
 import Link from 'next/link';
 import {useSearchParams} from 'next/navigation';
 import {useEffect, useRef, useState} from 'react';
 import {Button, ErrorNotice, Loading} from './ui';
 
 export function ClerkAccount() {
-  const {isLoaded, isSignedIn, sessionId, getToken} = useAuth();
-  const {signOut} = useClerk();
+  const {isLoaded, isSignedIn, sessionId, orgId, getToken} = useAuth();
+  const {signOut,setActive} = useClerk();
   const query = useSearchParams();
   const signingOut = query.get('signout') === '1';
   const managing = query.get('manage') === '1';
@@ -30,19 +31,14 @@ export function ClerkAccount() {
     if (!isLoaded || !isSignedIn || !sessionId || signingOut || managing) return;
     let active = true;
     setError('');
-    if (exchange.current?.session !== sessionId) {
+    if (exchange.current?.session !== `${sessionId}:${orgId||''}`) {
       const promise = (async () => {
         const token = await getToken();
         if (!token) throw Error('Your sign-in expired. Please sign in again.');
-        const response = await fetch('/api/identity/clerk/exchange', {
-          method: 'POST', credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(30000),
-          headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`}, body: '{}',
-        });
-        if (!response.headers.get('content-type')?.includes('application/json')) throw Error('The workspace service is unavailable. Please retry.');
-        const result = await response.json();
-        if (!response.ok) throw Error(result.error || 'Your workspace could not be opened.');
+        const result=await exchangeClerkSession(token);
+        if(result.organization_id&&result.organization_id!==orgId)await setActive({organization:result.organization_id});
       })();
-      exchange.current = {session: sessionId, promise};
+      exchange.current = {session: `${sessionId}:${orgId||''}`, promise};
     }
     // Share one exchange across React effect replays. Each mounted subscriber
     // can complete navigation without creating duplicate backend sessions.
@@ -50,7 +46,7 @@ export function ClerkAccount() {
       if (active) window.location.replace('/workspace');
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Your workspace could not be opened.'); });
     return () => { active = false; };
-  }, [isLoaded, isSignedIn, sessionId, signingOut, managing, getToken, attempt]);
+  }, [isLoaded, isSignedIn, sessionId, signingOut, managing, orgId, getToken, setActive, attempt]);
 
   function retry() { exchange.current = null; setError(''); setAttempt(value => value + 1); }
 
@@ -59,7 +55,7 @@ export function ClerkAccount() {
     {error && <ErrorNotice message={error} onRetry={!signingOut && !managing ? retry : undefined}/>}
     {!isLoaded || signingOut ? <Loading label={signingOut ? 'Signing out…' : 'Loading sign-in…'}/> : !isSignedIn ? <>
       {query.get('mode') === 'signup' ? <SignUp appearance={{elements:{rootBox:{width:"100%"},cardBox:{width:"100%"}}}} routing="hash" signInUrl="/login" forceRedirectUrl="/login"/> : <SignIn appearance={{elements:{rootBox:{width:"100%"},cardBox:{width:"100%"}}}} routing="hash" signUpUrl="/login?mode=signup" forceRedirectUrl="/login"/>}
-    </> : managing ? <><UserProfile routing="hash"/><Link className="btn mt-5" href="/workspace">Return to workspace</Link></> : error ? <><UserButton/><Button className="mt-5" onClick={() => void signOut({redirectUrl: '/login'})}>Sign out</Button></> : <Loading label="Opening your workspace…"/>}
+    </> : managing ? <><UserProfile routing="hash"/><Link className="btn mt-5" href="/workspace">Return to workspace</Link></> : error ? <><OrganizationSwitcher hidePersonal createOrganizationMode="navigation" createOrganizationUrl="/workspace/organizations" afterSelectOrganizationUrl="/login"/><UserButton/><Button className="mt-5" onClick={() => void signOut({redirectUrl: '/login'})}>Sign out</Button></> : <Loading label="Opening your workspace…"/>}
     <div className="auth-links"><Link href="/">← Agency website</Link></div>
   </div></section></main>;
 }

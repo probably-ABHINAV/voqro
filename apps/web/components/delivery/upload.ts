@@ -1,3 +1,4 @@
+import {organizationHeaders} from '@/lib/api';
 import {api, ApiError} from '../../lib/api';
 
 export interface UploadSession {id:string;chunkSize:number;nextChunk:number;complete:boolean}
@@ -24,7 +25,7 @@ export async function uploadPrivateFile(file:File, kind:'video'|'cover', deliver
     const bytes=file.slice(index*session.chunkSize,Math.min(file.size,(index+1)*session.chunkSize));
     for(let attempt=0;attempt<3;attempt++){
       try{
-        const response=await fetch(`/api/uploads/${encodeURIComponent(session.id)}/chunks/${index}`,{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/octet-stream'},body:bytes,signal:AbortSignal.timeout(30000)});
+        const response=await fetch(`/api/uploads/${encodeURIComponent(session.id)}/chunks/${index}`,{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/octet-stream',...organizationHeaders()},body:bytes,signal:AbortSignal.timeout(30000)});
         if(!response.ok){
           const result=await response.json().catch(()=>({error:'The upload service did not respond correctly.'}));
           throw new ApiError(result.error||'Chunk upload failed.',response.status);

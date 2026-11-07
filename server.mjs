@@ -1,3 +1,4 @@
+import {createCampaignPacks} from './campaign-packs.mjs';
 import {createRequestGuards} from './request-guards.mjs';
 import {createNotifications} from './notifications.mjs';
 import {createIdentity} from './identity.mjs';
@@ -76,6 +77,7 @@ const hash=s=>createHash('sha256').update(s).digest('hex');
 function session(req){const verified=identity.session(req);if(verified)return verified;if(process.env.DEMO_MODE!=='1')return null;const token=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('voqro_session='))?.split('=')[1];if(!token)return null;const u=row('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?',hash(token),Date.now());return u&&identity.isDemoUser(u.id)?u:null;}
 function send(res,status,data,headers={}){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(data));}
 async function body(req){let data='';for await(const chunk of req){data+=chunk;requireThat(data.length<100000,413,'Request is too large.');}try{return JSON.parse(data||'{}');}catch{throw new APIError(400,'Invalid JSON.');}}
+const campaignPacks=createCampaignPacks({db,send,requireThat});
 const delivery=createDelivery({db,row,rows,run,id,now,transaction,requireThat,textField,send,body,activity,dbPath});
 export const operations=createOperations({db,row,rows,run,id,now,transaction,requireThat,textField,send,body,activity,delivery});
 const commerce=createCommerce({db,row,rows,run,id,now,transaction,requireThat,textField,send,body});
@@ -130,6 +132,7 @@ async function api(req,res,path){
  if(await cloud.handler(req,res,path,u))return;
  if(await instagram.handler(req,res,path,u))return;
  if(path==='/api/connections'&&req.method==='GET')return send(res,200,connectionState(u));
+ if(await campaignPacks.handler(req,res,path,u))return;
  if(await catalog.handler(req,res,path,u))return;
  if(await commerce(req,res,path,u))return;
  if(await operations.handler(req,res,path,u))return;
@@ -138,6 +141,7 @@ async function api(req,res,path){
  if(path==='/api/workspace'&&req.method==='GET'){
   const brands=u.role==='brand'?rows('SELECT * FROM brands WHERE id=?',u.brand_id):u.role==='creator'?rows('SELECT DISTINCT b.* FROM brands b JOIN campaigns c ON c.brand_id=b.id JOIN assignments a ON a.campaign_id=c.id WHERE a.creator_id=?',u.creator_id):rows('SELECT * FROM brands');
   let campaigns=u.role==='brand'?rows('SELECT * FROM campaigns WHERE brand_id=?',u.brand_id):u.role==='creator'?rows('SELECT DISTINCT c.* FROM campaigns c JOIN assignments a ON a.campaign_id=c.id WHERE a.creator_id=?',u.creator_id):rows('SELECT * FROM campaigns');
+  campaigns=campaigns.map(c=>({...c,has_campaign_pack:!!row('SELECT campaign_id FROM campaign_reference_packs WHERE campaign_id=?',c.id)}));
   const assignments=u.role==='creator'?rows('SELECT * FROM assignments WHERE creator_id=?',u.creator_id):rows('SELECT a.* FROM assignments a JOIN campaigns c ON c.id=a.campaign_id'+(u.role==='brand'?' WHERE c.brand_id=?':''),...(u.role==='brand'?[u.brand_id]:[]));
   const allowed=new Set(assignments.map(a=>a.id));const deliverables=rows('SELECT * FROM deliverables').filter(d=>allowed.has(d.assignment_id)).map(d=>{const assignment=assignments.find(a=>a.id===d.assignment_id),latest=delivery.context.latestVersion(d.id),published=row('SELECT source,version_id FROM live_posts WHERE deliverable_id=?',d.id);const verified=latest&&published?.version_id===latest.id&&row("SELECT id FROM instagram_jobs WHERE deliverable_id=? AND version_id=? AND state='Verified'",d.id,latest.id);return {...d,status:verified?'Published':latest&&published?.version_id===latest.id?'Reported live':delivery.context.currentStatus({...d,campaign_id:assignment.campaign_id})};});
   const approvedCreators=publicCreators(),assignedCreatorIds=new Set(assignments.map(a=>a.creator_id));const workspaceCreators=staff(u)?publicCreators({all:true}):publicCreators({all:true}).filter(c=>approvedCreators.some(p=>p.id===c.id)||assignedCreatorIds.has(c.id));

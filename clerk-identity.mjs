@@ -1,3 +1,4 @@
+import {createOrganizations} from './organizations.mjs';
 import {createHash} from 'node:crypto';
 import {createClerkClient, verifyToken} from '@clerk/backend';
 
@@ -40,8 +41,9 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
     CREATE TABLE IF NOT EXISTS clerk_revocations(user_id TEXT PRIMARY KEY REFERENCES users(id),revoked_before INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS clerk_blocked_sessions(issuer TEXT NOT NULL,session_id TEXT NOT NULL,PRIMARY KEY(issuer,session_id));
   `);
+  const organizations = createOrganizations({db,api,issuer:settings.issuer,call});
   const proofs = new WeakMap();
-  const status = () => ({clerk_migration_available: enabled() && cfg.provider === 'password', clerk_available: enabled(), clerk_link_path: enabled() ? '/account/clerk' : null});
+  const status = () => ({organizations_enabled: enabled() && cfg.provider === 'clerk' && organizations.enabled(), clerk_migration_available: enabled() && cfg.provider === 'password', clerk_available: enabled(), clerk_link_path: enabled() ? '/account/clerk' : null});
   async function call(fn) {
     let timer;
     try { return await Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('timeout')), 10000); })]); }
@@ -75,6 +77,15 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
     if (!s || s.issuer !== settings.issuer) return;
     const verified = await providerIdentity(s.subject, s.session_id);
     if (verified.email !== s.email) return;
+    if (organizations.enabled()) {
+      const org = row('SELECT organization_id FROM clerk_session_organizations WHERE token=?',tokenHash(req));
+      if(!org)return;
+      const user=localSession(req);if(!user)return;
+      await organizations.authorize(user,verified.subject,org.organization_id);
+      const expected=req.headers['x-voqro-organization'];
+      requireThat((!expected||expected===org.organization_id) && (['GET','HEAD'].includes(req.method)||req.url==='/api/logout'||expected===org.organization_id),409,'Your organization changed in another tab. Reload this workspace before continuing.');
+      verified.organizationId=org.organization_id;
+    }
     proofs.set(req, verified);
   }
   function sessionAllowed(req, userId) {
@@ -124,20 +135,91 @@ export function createClerkIdentity({db, row, run, id, now, transaction, require
         run('INSERT INTO clerk_bindings VALUES(?,?,?,?,?)', uid, settings.issuer, verified.subject, verified.email, now());
         run("UPDATE identity_invitations SET status='Accepted',accepted_by=?,accepted_at=? WHERE id=?", uid, now(), invite.id);
         run('DELETE FROM password_invitation_tokens WHERE invitation_id=?', invite.id);
+        organizations.queueInvitation(uid,invite);
         audit(uid, 'accept-clerk-invitation', invite.id, 'Verified Clerk email matched an owner-issued invitation.');
         binding = {user_id: uid};
       }
       const account = row("SELECT * FROM identity_accounts WHERE user_id=? AND status='Active'", binding.user_id);
       requireThat(account?.email === verified.email, 403, 'This membership is disabled or its verified email has changed.');
       allowed(binding.user_id, verified);
-      const session = issueSession(req, binding.user_id);
-      run('INSERT INTO clerk_local_sessions VALUES(?,?,?,?)', digest(session.token), settings.issuer, verified.subject, verified.sid);
-      audit(binding.user_id, 'clerk-sign-in', binding.user_id, 'Verified Clerk session; application permissions remain database-controlled.');
-      return {session};
+      return {userId:binding.user_id};
     });
-    send(res, 200, linking ? result : {ok: true}, result.session ? sessionHeaders(result.session) : {});
+    if(linking){send(res,200,result);return true;}
+    let orgId=null;
+    if(organizations.enabled()){
+      await organizations.enroll(result.userId);
+      const user=row('SELECT * FROM users WHERE id=?',result.userId);
+      orgId=claims.org_id||claims.o?.id||organizations.defaultOrganization(user);
+      requireThat(typeof orgId==='string',403,'Select an available organization.');
+      await organizations.authorize(user,verified.subject,orgId);
+    }
+    const session=transaction(()=>{
+      const account=row("SELECT * FROM identity_accounts WHERE user_id=? AND status='Active'",result.userId);
+      requireThat(account?.email===verified.email,403,'Your membership changed. Sign in again.');
+      requireThat(row('SELECT user_id FROM clerk_bindings WHERE issuer=? AND subject=?',settings.issuer,verified.subject)?.user_id===result.userId,403,'Your identity binding changed.');
+      allowed(result.userId,verified);
+      if(orgId)organizations.scope(row('SELECT * FROM users WHERE id=?',result.userId),orgId);
+      const session=issueSession(req,result.userId);
+      run('INSERT INTO clerk_local_sessions VALUES(?,?,?,?)',digest(session.token),settings.issuer,verified.subject,verified.sid);
+      if(orgId)run('INSERT INTO clerk_session_organizations VALUES(?,?)',digest(session.token),orgId);
+      audit(result.userId,'clerk-sign-in',result.userId,'Verified Clerk session and organization; application permissions remain database-controlled.');
+      return session;
+    });
+    send(res,200,{ok:true,organization_id:orgId},sessionHeaders(session));
     return true;
   }
   const isProviderSession = req => !!row('SELECT token FROM clerk_local_sessions WHERE token=?', tokenHash(req));
-  return {status, prepare, sessionAllowed, isProviderSession, revokeUser, logout, handlePublic};
+  async function prepareInvitation(invite){
+    if(!organizations.enabled())return {provider_user_created:false};
+    const orgId=organizations.invitationOrganization(invite);
+    // Required Clerk membership must exist before the first sign-in can finish.
+    // Reserve an email identifier without marking it verified or sending mail.
+    const matches=await call(()=>api().users.getUserList({emailAddress:[invite.email],limit:2}));
+    requireThat(matches.totalCount<=1,409,'More than one Clerk account matches this invitation.');
+    let user=matches.data[0],created=false;
+    if(!user){user=await call(()=>api().users.createUser({emailAddress:[invite.email],emailAddressIdentificationStatus:['reserved'],skipPasswordRequirement:true,privateMetadata:{voqroInvitation:{id:invite.id,issuer:settings.issuer}}}));created=true;}
+    const primary=user.emailAddresses?.find(e=>e.id===user.primaryEmailAddressId)?.emailAddress?.toLowerCase();
+    requireThat(primary===invite.email,409,'The invited email must be the primary address of its Clerk account.');
+    const current=()=>row("SELECT i.id FROM identity_invitations i JOIN identity_accounts a ON a.user_id=i.created_by JOIN users u ON u.id=a.user_id WHERE i.id=? AND i.status='Pending' AND i.expires>? AND a.status='Active' AND u.role='owner'",invite.id,Date.now());
+    requireThat(current(),409,'The invitation or its owner changed.');
+    const memberships=await call(()=>api().organizations.getOrganizationMembershipList({organizationId:orgId,userId:[user.id],limit:10}));
+    if(!memberships.data.some(m=>m.publicUserData?.userId===user.id&&m.organization.id===orgId))await call(()=>api().organizations.createOrganizationMembership({organizationId:orgId,userId:user.id,role:'org:member'}));
+    requireThat(current(),409,'The invitation changed. Business access has not been granted.');
+    return {provider_user_created:created,organization_membership_prepared:true};
+  }
+  function scopeSession(req,user){return organizations.enabled()?organizations.scope(user,proofs.get(req)?.organizationId):user;}
+  let provisioning=false;
+  async function handleOrganizations(req,res,path,u){
+    if(!path.startsWith('/api/organizations'))return false;
+    requireThat(cfg.provider==='clerk'&&enabled()&&organizations.enabled(),503,'Organization workspaces are not configured.');
+    if(path==='/api/organizations'&&req.method==='GET'){
+      const owner=u.role==='owner'&&u.organization?.kind==='agency';
+      send(res,200,{active:u.organization,organizations:organizations.list(u),can_manage:owner,...(owner?{members:organizations.members().map(({subject,...m})=>m),brands:db.prepare('SELECT id,name FROM brands').all(),creators:db.prepare('SELECT id,name FROM creators').all()}: {})});return true;
+    }
+    requireThat(u.role==='owner'&&u.organization?.kind==='agency',403,'Manage organizations from the agency owner workspace.');
+    requireThat(req.method==='POST',405,'Use POST to manage organizations.');
+    requireThat(!provisioning,409,'Organization provisioning is already running. Retry shortly.');
+    const b=await body(req);requireThat(b&&typeof b==='object'&&!Array.isArray(b),400,'Send an organization object.');
+    provisioning=true;
+    try{
+      if(path==='/api/organizations/provision'){
+        requireThat(['brand','creator','agency'].includes(b.kind),400,'Choose a supported workspace type.');
+        const org=await organizations.provision({kind:b.kind,entityId:b.entity_id,actorId:u.id});
+        audit(u.id,'provision-organization',org.id,'Created or synchronized an explicitly scoped Clerk organization.');send(res,200,{organization:org});return true;
+      }
+      if(path==='/api/organizations/grant'){
+        requireThat(typeof b.organization_id==='string'&&typeof b.user_id==='string',400,'Choose an organization and member.');
+        await organizations.grant(b.organization_id,b.user_id,u.id);
+        audit(u.id,'grant-organization',b.organization_id,'Granted workspace access to '+b.user_id);send(res,200,{ok:true});return true;
+      }
+      if(path==='/api/organizations/revoke'){
+        requireThat(typeof b.organization_id==='string'&&typeof b.user_id==='string',400,'Choose an organization and member.');
+        requireThat(organizations.organization(b.organization_id)?.kind!=='agency',400,'Manage agency membership from Team access.');
+        run('DELETE FROM workspace_org_members WHERE organization_id=? AND user_id=?',b.organization_id,b.user_id);
+        audit(u.id,'revoke-organization',b.organization_id,'Revoked app workspace access for '+b.user_id);send(res,200,{ok:true});return true;
+      }
+      requireThat(false,404,'Organization endpoint not found.');
+    }finally{provisioning=false;}
+  }
+  return {status, prepare, sessionAllowed, scopeSession, handleOrganizations, prepareInvitation, validateInvitation:membership=>{if(organizations.enabled())organizations.invitationOrganization(membership);}, resetMembership:(uid,membership,actorId)=>{if(organizations.enabled()){run('DELETE FROM workspace_org_members WHERE user_id=?',uid);run('DELETE FROM workspace_org_enrollments WHERE user_id=?',uid);organizations.queueInvitation(uid,{...membership,created_by:actorId});}}, isProviderSession, revokeUser, logout, handlePublic};
 }
