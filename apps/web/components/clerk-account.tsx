@@ -54,11 +54,11 @@ export function ClerkAccount() {
 
   function retry() { exchange.current = null; setError(''); setAttempt(value => value + 1); }
 
-  return <main id="main-content" className="auth-page"><section className="auth-form-wrap"><div className="auth-form">
+  return <main id="main-content" className="min-h-screen flex items-center justify-center p-5"><section className="w-full flex justify-center"><div className={managing ? "w-full max-w-4xl" : "auth-form"}>
     <Link href="/" className="eyebrow">Voqro</Link>
     {error && <ErrorNotice message={error} onRetry={!signingOut && !managing ? retry : undefined}/>}
     {!isLoaded || signingOut ? <Loading label={signingOut ? 'Signing out…' : 'Loading sign-in…'}/> : !isSignedIn ? <>
-      {query.get('mode') === 'signup' ? <SignUp routing="hash" signInUrl="/login" forceRedirectUrl="/login"/> : <SignIn routing="hash" signUpUrl="/login?mode=signup" forceRedirectUrl="/login"/>}
+      {query.get('mode') === 'signup' ? <SignUp appearance={{elements:{rootBox:{width:"100%"},cardBox:{width:"100%"}}}} routing="hash" signInUrl="/login" forceRedirectUrl="/login"/> : <SignIn appearance={{elements:{rootBox:{width:"100%"},cardBox:{width:"100%"}}}} routing="hash" signUpUrl="/login?mode=signup" forceRedirectUrl="/login"/>}
     </> : managing ? <><UserProfile routing="hash"/><Link className="btn mt-5" href="/workspace">Return to workspace</Link></> : error ? <><UserButton/><Button className="mt-5" onClick={() => void signOut({redirectUrl: '/login'})}>Sign out</Button></> : <Loading label="Opening your workspace…"/>}
     <div className="auth-links"><Link href="/">← Agency website</Link></div>
   </div></section></main>;
