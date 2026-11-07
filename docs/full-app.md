@@ -32,7 +32,59 @@ For the backend, set through secure runtime settings:
 
 Cognito is still supported when selected; password mode does not require an AWS account. See `docs/identity.md` for the existing provider integration and `docs/backend-hosting.md` for storage and backup operations.
 
-For Vercel, set the project root directory to `apps/web`, use the Next.js framework, install with `npm ci`, and build with `npm run build`. Set `VOQRO_BACKEND_ORIGIN` to the real backend's HTTPS origin. The old repository-root static build and `VOQRO_PREVIEW=1` do not configure the full application. Do not switch the live project to the Next.js root until that backend is connected and checked.
+For Vercel, set the project root directory to `apps/web`, use the Next.js framework, install with `npm ci`, build with `npm run build`, leave the output directory automatic (`null`), and use Node.js 24.x. `apps/web/vercel.json` records the frontend build settings. The repository-root `vercel.json` is retained only for the older static-preview build; it must not select the full application’s build. Run Vercel CLI from the repository root and explicitly select `--local-config apps/web/vercel.json` for both production and preview deployments.
+
+Do not switch the live project until the persistent backend’s TLS, fresh production database, uploads volume and health have been checked. For this deployment, the backend origin is `https://voqro-api-14829c4d.centralindia.cloudapp.azure.com` and its `APP_BASE_URL` must be exactly `https://voqro.vercel.app`. Keep `AUTH_ALLOW_INSECURE_LOCAL` unset in production. Password cookies are Secure, HttpOnly, host-only and SameSite=Strict; the external `/api` rewrite must preserve these cookies and the browser’s Origin header. No wildcard CORS or broad trusted-origin exception is required.
+
+### Switch the existing Vercel project
+
+After backend checks pass, apply these project settings from the repository root:
+
+```sh
+cat > /tmp/voqro-vercel-next-project.json <<'JSON'
+{
+  "rootDirectory": "apps/web",
+  "framework": "nextjs",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": null,
+  "nodeVersion": "24.x",
+  "enableExternalRewriteCaching": false,
+  "sourceFilesOutsideRootDirectory": false
+}
+JSON
+vercel api /v9/projects/prj_zWI3ldHAAxa1ZzNRdEB75Re8MTBR --method PATCH --input /tmp/voqro-vercel-next-project.json --silent --scope xoxogroovy-7398s-projects
+vercel env add VOQRO_BACKEND_ORIGIN --environment production --value https://voqro-api-14829c4d.centralindia.cloudapp.azure.com --no-sensitive --yes --scope xoxogroovy-7398s-projects
+vercel env remove VOQRO_PREVIEW --environment production --yes --scope xoxogroovy-7398s-projects
+```
+
+If `VOQRO_BACKEND_ORIGIN` already exists, update its production value instead of adding a duplicate. No backend password, bootstrap secret, storage credential or provider secret belongs in this frontend project. Preserve the existing deployment protection setting: the primary production domain is public while preview and generated deployment URLs remain protected.
+
+Ensure the Git production branch contains `apps/web` and this configuration before relying on future pushes. The earlier `main` static-preview revision does not contain the Next.js application; merge the reviewed full-app release into the production branch as part of the switch. Changing the Vercel root directory alone does not change a Git branch.
+
+Deploy the reviewed full-app commit:
+
+```sh
+vercel deploy --prod --yes --no-wait --local-config apps/web/vercel.json --scope xoxogroovy-7398s-projects
+vercel inspect <deployment-url> --scope xoxogroovy-7398s-projects
+```
+
+Wait for **Ready**, confirm the build log detected Next.js and ran the frontend’s `npm run build`, and test through `https://voqro.vercel.app`. A generated deployment URL or the secondary production alias is not the canonical application origin; password and other protected mutations from those origins are intentionally rejected by the backend. The main application should be opened at its canonical URL.
+
+### Preview deployments of the full application
+
+A working authentication preview requires a **separate persistent backend and database**, with its own `APP_BASE_URL` set to the exact stable preview frontend origin. Supply that backend’s actual HTTPS origin as `VOQRO_BACKEND_ORIGIN` in the Vercel Preview environment, then run from the repository root:
+
+```sh
+vercel deploy --environment preview --yes --no-wait --local-config apps/web/vercel.json --scope xoxogroovy-7398s-projects
+vercel inspect <deployment-url> --scope xoxogroovy-7398s-projects
+```
+
+Use the configured stable preview hostname for browser checks. Do not reuse the production database, loosen the production Origin check to accept arbitrary preview URLs, or set `VOQRO_PREVIEW=1` as a substitute for a backend. That flag only belongs to the legacy browser-only sample build. The Next.js Vercel build refuses a missing backend origin, and a configured origin does not prove backend reachability.
+
+### Checks after deployment
+
+Verify `/api/health` through the frontend returns `demo: false`; unauthenticated `/api/workspace` must return JSON 401. API responses must retain `Cache-Control: no-store` and must not be served as a shared cached response. Verify a fresh browser can open the public site without Vercel authentication, and sign-in cookies survive a workspace reload through the canonical frontend origin. Test private media access and range responses through the same rewrite.
 
 Complete a first owner login through the frontend, create a brand and creator, invite their real users, send and accept a proposal, then test a private upload, revision, approval, invoice and reload. Restart the backend and check records and files again. A green Vercel build cannot establish these capabilities by itself.
 
