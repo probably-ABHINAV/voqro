@@ -5,7 +5,9 @@ import {fileURLToPath} from 'node:url';
 const webRoot = dirname(fileURLToPath(import.meta.url));
 
 const configured = process.env.VOQRO_BACKEND_ORIGIN;
-if (process.env.VERCEL === '1' && process.env.NODE_ENV === 'production' && !configured) {
+// Branch builds without an isolated backend show a disconnected preview.
+const disconnectedPreview = process.env.VERCEL_ENV === 'preview' && !configured;
+if (process.env.VERCEL === '1' && process.env.NODE_ENV === 'production' && !configured && !disconnectedPreview) {
   throw new Error('Set VOQRO_BACKEND_ORIGIN to the public HTTPS origin of the persistent Voqro backend before deploying this application to Vercel. A frontend build cannot provide accounts, saved records or workers without that backend.');
 }
 let backend: string | null = null;
@@ -20,6 +22,7 @@ if (configured) {
 
 const config: NextConfig = {
   poweredByHeader: false,
+  env: {NEXT_PUBLIC_DISCONNECTED_PREVIEW: disconnectedPreview ? '1' : '0'},
   turbopack: {root: webRoot},
   outputFileTracingRoot: webRoot,
   output: 'standalone',

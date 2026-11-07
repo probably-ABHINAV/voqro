@@ -24,7 +24,7 @@ function ActiveGate({children}:{children:ReactNode}) {
       pending.current={key,promise:(async()=>{
         const config=await api('identity/config');
         if(!config.organizations_enabled)return null;
-        const token=await getToken({skipCache:true});if(!token)throw Error('Sign in again to select a workspace.');
+        const token=await getToken({skipCache:true});if(!token)throw Error('Sign in again to open Voqro.');
         return (await exchangeClerkSession(token)).organization_id;
       })()};
     }
@@ -36,5 +36,5 @@ function ActiveGate({children}:{children:ReactNode}) {
   },[isLoaded,isSignedIn,key,getToken,attempt]);
   if(isLoaded&&isSignedIn&&ready===key&&!error)return <div key={key}>{children}</div>;
   if(!error)return <Loading label="Opening your workspace…"/>;
-  return <main className="max-w-xl mx-auto p-6 my-16"><h1>Choose your workspace</h1><ErrorNotice message={error}/><div className="flex gap-3 mt-6"><Button onClick={()=>{pending.current=null;setAttempt(v=>v+1);}}>Retry</Button><Link className="btn" href="/">Agency website</Link><Button onClick={()=>void signOut({redirectUrl:'/login'})}>Log out</Button></div></main>;
+  return <main className="max-w-xl mx-auto p-6 my-16"><h1>Unable to open Voqro</h1><ErrorNotice message={error}/><div className="flex gap-3 mt-6"><Button onClick={()=>{pending.current=null;setAttempt(v=>v+1);}}>Retry</Button><Link className="btn" href="/">Agency website</Link><Button onClick={()=>void signOut({redirectUrl:'/login'})}>Log out</Button></div></main>;
 }

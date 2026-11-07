@@ -11,8 +11,7 @@ try{
  console.log(JSON.stringify({dryRun:!args.includes('--apply'),agency:'Voqro',brands:brands.length,creators:creators.length,provider:'Voqro'}));
  if(args.includes('--apply')){
   await orgs.provision({kind:'agency',actorId:owner});
-  for(const b of brands)await orgs.provision({kind:'brand',entityId:b.id,actorId:owner});
-  for(const c of creators)await orgs.provision({kind:'creator',entityId:c.id,actorId:owner});
-  orgs.activate();console.log(JSON.stringify({enabled:orgs.enabled(),workspaces:db.prepare('SELECT COUNT(*) n FROM workspace_organizations').get().n}));
+  orgs.retireChildWorkspaces(owner);
+  orgs.activate();console.log(JSON.stringify({enabled:orgs.enabled(),activeWorkspaces:1,archivedWorkspaces:db.prepare('SELECT COUNT(*) n FROM archived_workspace_records').get().n}));
  }
 }catch(e){console.error(JSON.stringify({failed:true,message:e.message}));process.exitCode=1;}finally{db?.close();}

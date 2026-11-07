@@ -4,14 +4,13 @@ import {UserButton, useAuth, useClerk} from '@clerk/nextjs';
 import {useState} from 'react';
 import {api} from '@/lib/api';
 import {clerkEnabled} from '@/lib/clerk-config';
-import {WorkspaceSwitcher} from './workspace-switcher';
 import {Button} from './ui';
 
-export function ClerkHeaderControls({organizationsEnabled}:{organizationsEnabled?:boolean}) {
-  return clerkEnabled ? <ActiveClerkControls organizationsEnabled={organizationsEnabled}/> : null;
+export function ClerkHeaderControls() {
+  return clerkEnabled ? <ActiveClerkControls/> : null;
 }
 
-function ActiveClerkControls({organizationsEnabled}:{organizationsEnabled?:boolean}) {
+function ActiveClerkControls() {
   const {isLoaded, isSignedIn} = useAuth();
   const {signOut} = useClerk();
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -28,7 +27,6 @@ function ActiveClerkControls({organizationsEnabled}:{organizationsEnabled?:boole
   }
 
   return <div className="flex items-center gap-3 flex-wrap" role="group" aria-label="Account controls">
-    {organizationsEnabled&&<WorkspaceSwitcher/>}
     <UserButton userProfileMode="modal"/>
     <Button onClick={() => void logout()} disabled={busy}>{busy ? 'Logging out…' : 'Log out'}</Button>
     {error && <span role="alert" className="text-sm">{error}</span>}
