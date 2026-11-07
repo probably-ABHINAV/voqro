@@ -179,6 +179,10 @@ export function createCloud({db,row,rows,run,id,now,transaction,requireThat=need
   const assertLease=()=>need(run('UPDATE cloud_ai_jobs SET lease_until=? WHERE id=? AND lease_token=? AND lease_until>?',Date.now()+180000,job.id,job.lease_token,Date.now()).changes===1,409,'Worker lease was lost before a provider action.');
   const update=(state,extra={})=>{const values={state,lease_token:null,lease_until:null,updated:now(),...extra};run(`UPDATE cloud_ai_jobs SET ${Object.keys(values).map(k=>k+'=?').join(',')} WHERE id=? AND lease_token=?`,...Object.values(values),job.id,job.lease_token);};
   try{
+   if(job.mode!=='local'){
+    need(editors(row('SELECT * FROM users WHERE id=?',job.created_by)||{}),403,'The requesting operator no longer has AI spending access.');
+    if(row("SELECT name FROM sqlite_master WHERE type='table' AND name='identity_accounts'")){const account=row('SELECT status FROM identity_accounts WHERE user_id=?',job.created_by);need(!account||account.status==='Active',403,'The requesting account is no longer active.');}
+   }
    if(job.mode==='azure')need(azureReady(),503,'Azure AI has been disabled. No new provider calls will be made.');
    if(job.mode==='aws')need(config.aiEnabled&&config.model&&config.pricingVerified,503,'AWS AI has been disabled. No new provider calls will be made.');
    const v=row('SELECT * FROM content_versions WHERE id=?',job.version_id),pkg=JSON.parse(v.package_json),directory=resolve(access.store,'.analysis',job.id);

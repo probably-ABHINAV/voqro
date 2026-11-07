@@ -181,3 +181,11 @@ test('Azure review stays unavailable without explicit enablement',async()=>{
   await f.request('/budget',{campaign_id:'cam1',limit_cents:50});assert.equal((await f.request('/analyse',{version_id:'v1',mode:'azure'})).status,503);assert.equal(f.modelCalls(),0);
  }finally{await f.close();}
 });
+
+test('queued Azure analysis cannot spend after its operator loses access',async()=>{
+ const f=await fixture({azure:true,config:azureConfig});try{
+  await f.request('/budget',{campaign_id:'cam1',limit_cents:50});const requested=await f.request('/analyse',{version_id:'v1',mode:'azure'});await f.cloud.tick();
+  f.run("UPDATE users SET role='reviewer' WHERE id='owner'");await f.cloud.tick();
+  const job=f.row('SELECT * FROM cloud_ai_jobs WHERE id=?',requested.data.id);assert.equal(job.state,'Failed');assert.equal(job.external_started,0);assert.equal(job.reserved_cents,0);assert.equal(f.modelCalls(),0);
+ }finally{await f.close();}
+});
