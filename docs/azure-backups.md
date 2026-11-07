@@ -42,3 +42,5 @@ docker exec voqro-backend node --disable-warning=ExperimentalWarning scripts/off
 ```
 
 Recovery refuses any existing destination, checks completion paths/limits, downloads and verifies the files. Do not point production at a recovered database until identity/provider configuration is restored, uncertain external jobs reconciled and application acceptance checks pass. Recovery deliberately does not start workers, reconnect accounts, send messages, publish media or overwrite live data. Password hashes and business/membership records remain private in the snapshot. `--force` on the `run` command is an explicit administrative retry that bypasses the frequency check; never put it in the scheduled service.
+
+The automated [restored-application acceptance test](release-checks.md#restored-application-acceptance) additionally boots an isolated synthetic recovery copy and checks fresh login, financial records, private video playback, brand isolation and source independence. It does not replace a real production Clerk login and provider reconciliation during disaster recovery.

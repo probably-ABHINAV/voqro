@@ -26,6 +26,10 @@ The Veda Munch pack contains the supplied scripts, captions, creator links, plan
 2. **Signing:** select a signing provider and securely configure its credentials. Current exact-version acknowledgements are not provider-certified signatures. GitHub Student Pack ownership alone does not connect a signing provider.
 3. **Payments:** manual invoices, receipts and payouts are available; no payment processor is connected. A real campaign must be reconciled against actual settlement evidence.
 4. **Campaign acceptance:** invited client/creator onboarding and a real approval/revision cycle need those participants. Real observed metrics are required for optimization results.
-5. **Operations:** backup/verify/restore tooling and pre-release local backups exist. The Azure backup release adds daily private Blob copies with full readback/isolated restore verification and owner status; see [backup operations](azure-backups.md). External monitoring delivery, cross-region recovery and application-level recovery acceptance remain outstanding.
+5. **Operations:** daily private Azure Blob backups have full readback/isolated restore verification and owner status; see [backup operations](azure-backups.md). The release automation adds backend/type/browser/build checks, public availability probes, and restored-application acceptance using synthetic accounts. External alert delivery, a real production-identity recovery exercise and cross-region recovery remain outstanding. See [release checks](release-checks.md) for coverage and limits.
+
+## Release automation
+
+GitHub release checks run on main pushes and pull requests using isolated data without production credentials. A separate read-only availability workflow checks the live website, login, both API origins, Clerk open-signup configuration and private workspace protection twice an hour. These checks do not automatically gate Vercel deployment, and GitHub notifications depend on the owner's account settings.
 
 These are distinct from the deployed app being available. Do not mark the entire release complete by changing status labels or fabricating provider outcomes.

@@ -1,0 +1,70 @@
+name: Release checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      AWS_MEDIA_ENABLED: '0'
+      AWS_AI_ENABLED: '0'
+      AZURE_AI_ENABLED: '0'
+      INSTAGRAM_PUBLISH_ENABLED: '0'
+      NOTIFICATION_EMAIL_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/web/package-lock.json
+      - name: Install locked dependencies and media tools
+        run: |
+          npm ci
+          npm ci --prefix apps/web
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Backend syntax, permissions, workflows and recovery
+        run: |
+          npm run check
+          npm test
+      - name: Frontend types
+        run: npm run check:web
+      - name: Install test browser
+        run: |
+          npx playwright install --with-deps chromium
+          node --input-type=module -e "import {chromium} from '@playwright/test'; console.log('CHROMIUM_PATH='+chromium.executablePath())" >> "$GITHUB_ENV"
+      - name: Browser workflows against isolated local data
+        run: npm run test:modern
+      - name: Production frontend build
+        env:
+          VERCEL: '1'
+          VERCEL_ENV: production
+          VOQRO_BACKEND_ORIGIN: https://voqro-api-14829c4d.centralindia.cloudapp.azure.com
+          NEXT_PUBLIC_CLERK_ENABLED: '0'
+        run: npm run build:web
+      - name: Retain failed browser traces with synthetic data
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.run_id }}
+          path: test-results-modern/
+          retention-days: 3
+          if-no-files-found: ignore
