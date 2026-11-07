@@ -44,14 +44,14 @@ COPY --from=dependencies /opt/voqro/node_modules ./node_modules
 COPY package.json package-lock.json LICENSE ./
 COPY *.mjs ./
 COPY public ./public
-COPY scripts/backup.mjs ./scripts/backup.mjs
+COPY scripts/backup.mjs scripts/migrate-clerk-users.mjs ./scripts/
 
 COPY <<'JS' /usr/local/bin/voqro-start.mjs
 import {identityConfig} from '/opt/voqro/identity.mjs';
 
 const identity = identityConfig();
-if (process.env.DEMO_MODE !== '0' || !identity.configured || identity.insecureLocal || (identity.provider !== 'password' && !identity.bootstrapEmail)) {
-  console.error('Production container requires DEMO_MODE=0 and a valid HTTPS APP_BASE_URL with AUTH_PROVIDER=password or configured Cognito. Password first-owner setup also requires the server bootstrap email and secret.');
+if (process.env.DEMO_MODE !== '0' || !identity.configured || identity.insecureLocal || (identity.provider === 'cognito' && !identity.bootstrapEmail)) {
+  console.error('Production container requires DEMO_MODE=0 and a valid HTTPS APP_BASE_URL with AUTH_PROVIDER=password, configured Clerk, or configured Cognito. Password first-owner setup also requires the server bootstrap email and secret.');
   process.exit(1);
 }
 await import('/opt/voqro/server.mjs');

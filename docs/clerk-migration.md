@@ -1,20 +1,68 @@
-# Proposed Clerk migration — not executed
+# Clerk authentication
 
-The [GitHub Student Developer Pack](https://education.github.com/pack) currently lists **Clerk Pro free while you are a student** (checked 7 November 2026). Redemption and production activation have not occurred. The user supplied Clerk setup instructions and asked whether Clerk fits Voqro; no existing authentication has been replaced.
+Clerk is the only production sign-in provider at **https://voqro.vercel.app/login**. The user explicitly requested removal of the two-sign-in migration flow. Sign-in opens the workspace automatically; no additional Voqro password or “open workspace” confirmation is required. `/setup` and `/account/clerk` redirect to `/login`; `/register` redirects to Clerk signup. Signup alone does not grant an agency membership.
 
-Clerk is a useful candidate for verified email, password recovery, social sign-in and managed sessions. It does not provide electronic signatures, Instagram publishing permission, or production AI inference. Provider billing features are separate from connecting a payment processor or executing payments.
+The website and workspace headers show Clerk's profile menu and a visible **Log out** button when signed in. Profile settings use Clerk's modal; the existing account menu also links to `/login?manage=1`. Logout ends the local cookie when possible and signs out the Clerk session. Clerk handles identity, verification and account settings; Voqro retains database-controlled agency/brand/creator permissions.
 
-## Existing account contract
+## Production configuration
 
-The Next.js frontend uses the Express backend's password authentication and HttpOnly sessions. `users.id` anchors roles and campaign/brand/creator ownership. `identity_accounts` maps identity to those records; `password_credentials` stores separate salts and scrypt hashes. The existing owner must retain the same application user ID and all related business records.
+- Selected Clerk application: `app_3LljzexYxBFra4ABtFTXCRmtg6q`.
+- Production instance: `ins_3Lll8Mm5fD4YE9A3q4SdmAQ4iX8`.
+- Domain record: `dmn_3Lll8I0pu4ul3wyf01M9K3BTYMj`.
+- Frontend API proxy and exact issuer: `https://voqro.vercel.app/__clerk`.
+- Backend release for the cutover: `2d40b049fc127751988d3bdabfee20df88881c14`.
 
-## Reviewable migration plan
+The official Next.js Frontend API proxy supports the existing Vercel hostname. A separate purchased domain is not required for this configured route. Public discovery, frontend environment and client endpoints work through the proxy. Never substitute the publishable key's encoded `clerk.voqro.vercel.app` hostname for the verified proxy issuer.
 
-1. Redeem the Clerk student benefit into an owner-controlled Clerk account. Select the production application and verify its domain requirements, SDK compatibility with Next16/Express5, and student-plan limits. Temporary accountless development keys alone are not a production migration.
-2. Prepare an isolated development/staging integration first. Add Clerk to both Next.js and Express. Verify session issuer, signature, intended audience/authorized frontend parties and expiry on the backend; never trust browser role claims.
-3. Preserve Voqro's `users.id`, memberships, invitations and all business records. Map the stable Clerk subject to that existing application identity. Keep agency authorization in Voqro rather than assuming a Clerk organization role equals a brand/creator role.
-4. Verify Clerk's current support for the application's exact scrypt parameters and encoding before proposing a password import. Do not export real password hashes merely to investigate compatibility. If unsupported, use verified account enrollment/recovery and explicit owner-approved linking; never silently merge accounts based only on a matching email address.
-5. Require owner reauthentication before account linking, test both the Next frontend and Express API, and retain a rollback path. Test brand/creator isolation, revoked memberships, invitation reuse, OAuth callbacks, password recovery and private media access.
-6. Switch production only after the owner migration plan is approved and the user can access the existing workspace through Clerk. Define session cutover and password-account retirement deliberately; do not remove existing sessions or credentials during unapproved setup.
+Backend:
 
-The supplied setup guide explicitly says: “Do not modify or remove existing auth without approval.” Therefore `clerk init` has not been run against the live application. The completed Azure AI integration is independent of this migration.
+```text
+AUTH_PROVIDER=clerk
+CLERK_MIGRATION_ENABLED=0
+CLERK_ISSUER=https://voqro.vercel.app/__clerk
+CLERK_SECRET_KEY=<private-production-secret>
+APP_BASE_URL=https://voqro.vercel.app
+```
+
+Vercel Production:
+
+```text
+NEXT_PUBLIC_CLERK_ENABLED=1
+CLERK_FRONTEND_API_PROXY_ENABLED=1
+NEXT_PUBLIC_CLERK_PROXY_URL=https://voqro.vercel.app/__clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<production-publishable-key>
+CLERK_SECRET_KEY=<private-production-secret>
+VOQRO_BACKEND_ORIGIN=https://voqro-api-14829c4d.centralindia.cloudapp.azure.com
+```
+
+The keys originate from Azure Key Vault `voqro-setup-14829c4d`, secrets `clerk-prod-publishable-key` and `clerk-prod-secret-key`. The Vercel secret key uses Secret type; the public key uses Config because it is intentionally included in the browser. Backend configuration remains root-owned mode0600. Keys were never committed, printed or put in local development env files. Temporary VM access to the single vault secret was removed after provisioning. CLI account-level OAuth remains unavailable; normal official SDK access works. Do not rerun init or create an accountless application.
+
+## Completed membership migration
+
+The owner completed the original explicit linking flow and its binding was verified in the database. At final import, three active memberships existed: one already linked and two requiring migration. `scripts/migrate-clerk-users.mjs` imported those two through Clerk's official API with stable external IDs and **reserved, unverified email identifiers**. No passwords or hashes were copied, and no application IDs, roles, scopes or business records changed. Private provider metadata records migration provenance for safe retries; it grants no application permissions.
+
+The administrative importer defaults to a read-only preflight and requires `--apply` plus the exact selected production instance for writes. It refuses unrelated pre-existing provider users, even when email addresses match; only its own trusted external-ID/provenance records can resume an interrupted import. It rechecks membership records inside the binding transaction after provider calls. It is not exposed as an HTTP route. Future new members should use owner-issued invitations, not this one-time migration tool.
+
+Imported members must verify their email through Clerk before the backend grants access. Clerk's email-code preference was configured with `preferredSignInStrategyWhenPasswordRequired: 'otp'`. No test users, impersonated sessions or agent-triggered verification emails were created. The production `enhancedEmailDeliverability:true` update was accepted, although a legacy public flag continued reporting false; actual email/recovery delivery remains a user acceptance check.
+
+All three active memberships were mapped before cutover. The installer independently enforces an active mapped owner and zero unmapped active memberships. The pre-cutover backup is `/var/lib/voqro/backups/before-clerk-only-2d40b04`; the earlier linking backup remains at `/var/lib/voqro/backups/before-clerk-link-631858a`.
+
+## Session and authorization contract
+
+The official backend SDK verifies signature, exact issuer, authorized frontend origin, expiry and session/user IDs. Pending sessions, impersonation claims and machine identities are rejected. A verified Clerk token is automatically exchanged for a Secure HttpOnly local cookie, preserving same-origin private images/videos through the Vercel rewrite. Each protected request verifies the provider session/account and current local membership; token organization/role claims never grant agency access.
+
+Local sessions last at most one hour. On expiry, an existing valid Clerk session reopens the workspace automatically through `/login`. Owner revocation and membership changes record a cutoff against the provider session's original creation time, preventing refreshed JWTs from bypassing revocation. Provider termination, locked/banned users and changed verified emails deny access. The initial implementation makes two provider API requests per protected request and fails closed on outages/rate limits; assess latency before scaling.
+
+Legacy password login, registration and bootstrap return503 in Clerk mode. Demo login remains disabled. The old linking endpoint rejects new links. Password records remain private for operational rollback but cannot authenticate users while `AUTH_PROVIDER=clerk`.
+
+Rollback must be a deliberate operational change, not another login choice offered in the product. Existing password users retain credentials, but new Clerk-only members do not have local passwords. Do not delete identity tables or restore an old business database merely to revert authentication.
+
+## Verification
+
+- 154 backend tests passed, including controlled import, conflicts, partial failures/resume, reserved identifiers, token verification, binding, invitation privacy, revocation, disabled membership and rollback.
+- 41 source/script syntax checks and Next typecheck/build passed.
+- The production container passed explicit Clerk-only configuration, legacy-login-disabled and anonymous-workspace-denied checks.
+- Live Chromium found exactly one Clerk sign-in widget at `/login`, no old password/linking prompts and no page errors. All legacy page redirects resolve to the same Clerk flow.
+- Public checks confirmed provider `Clerk`, linking disabled, canonical `/login`, and503 responses for legacy login/register/bootstrap.
+
+The owner’s pre-cutover link was verified. A new authenticated workspace visit, profile changes, logout and recovery/email receipt after the final cutover still need human acceptance; automated checks did not impersonate the owner. GitHub Student Pack redemption is unverified. No paid plan upgrade, domain purchase or environment publication occurred.
