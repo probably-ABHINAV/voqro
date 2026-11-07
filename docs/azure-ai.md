@@ -6,7 +6,7 @@ Voqro's Media & AI workflow supports Azure OpenAI independently of AWS storage. 
 
 The initial resource is `voqro-ai-14829c4d` in `uaenorth`, deployment `voqro-review`, model `gpt-4.1-mini` version `2025-04-14`, SKU `GlobalStandard`, capacity 10. GlobalStandard processing is not a regional data-residency guarantee. Central India rejected the OpenAI S0 resource; UAE North is both service-supported and allowed by this subscription's region policy.
 
-The VM's system-assigned managed identity has **Cognitive Services OpenAI User** only on this AI resource. The container obtains short-lived access tokens from Azure Instance Metadata Service; tokens are never logged, returned to the browser or persisted. No account API key is needed. A synthetic live request from the deployed backend container succeeded on 7 November 2026 using managed identity (22 input tokens and 5 output tokens). No customer content was used for this connectivity check.
+The VM's system-assigned managed identity has **Cognitive Services OpenAI User** only on this AI resource. The container obtains short-lived access tokens from Azure Instance Metadata Service; tokens are never logged, returned to the browser or persisted. No account API key is needed. A synthetic live request from the deployed backend container succeeded on 7 November 2026 using managed identity (22 input tokens and 5 output tokens). The deployed image-review adapter also completed a synthetic frame review with schema-valid findings (226 input tokens and 107 output tokens). No customer content was used for either connectivity check.
 
 Runtime configuration (no credentials):
 

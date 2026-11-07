@@ -11,6 +11,7 @@ Offer inventory checked on 7 November 2026 against the [official GitHub Student 
 | BrowserStack: Automate Mobile, one parallel session and one user for one year | Real mobile/device QA beyond existing local Chromium tests | Needs redemption and a secure automation connection. |
 | Testmail: Essential plan while a student | Test invitation and password-recovery email delivery once implemented | Testing inboxes, not a production transactional-email sending service. |
 | 1Password: two years including Developer Tools | Human ownership and recovery of provider credentials | Optional owner redemption. Existing runtime secrets stay in Azure's secure infrastructure. |
+| Clerk Pro free while a student | Verified identity, password recovery, social sign-in and managed sessions | Valuable next authentication migration; existing owner ID, roles and records must be preserved. Not activated. |
 | GitHub Pro while a student; Copilot Student | Repository collaboration and coding assistance | Copilot student access is not a production model API entitlement for Voqro users. |
 | Heroku: $13/month for 24 months | Possible later hosted-service alternative | Do not duplicate the working Azure backend solely to consume another benefit. SQLite and uploads need durable storage; ordinary ephemeral dyno storage is unsuitable. |
 | MongoDB Atlas: $50 credit | Potential future document-database work | No migration needed: Voqro's current relational workflow and SQLite database already work. |
@@ -29,3 +30,5 @@ Redeem benefits from the official pack page using the owner's GitHub account. Pr
 ## Signing cost check
 
 The [DocuSeal pricing page](https://www.docuseal.com/pricing), checked on the same date, lists a free Basic web plan with 10 request emails per month. Its production API/embedding requires a Pro seat (US$20/month) plus US$0.20 per completed document; sandbox API documents are free. Free web signing therefore must not be represented as a free production API integration. No DocuSeal subscription, signing request or recipient email was created.
+
+Clerk migration details are recorded in [the proposed migration plan](clerk-migration.md). Current login remains unchanged.
