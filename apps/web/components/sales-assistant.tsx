@@ -18,10 +18,11 @@ export default function SalesAssistant({owner,refreshWorkspace}:{owner:boolean;r
  const [state,setState]=useState<State|null>(null),[selected,setSelected]=useState(''),[detail,setDetail]=useState<Detail|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[search,setSearch]=useState('');
  const requestKeys=useRef(new Map<string,string>());
  const activeSelection=useRef('');
+ const polling=useRef(false);
  const load=useCallback(async(pid=selected,q=search)=>{const s=await api<State>('sales-ai'+(q?'?q='+encodeURIComponent(q):''));setState(s);if(pid){const d=await api<Detail>('sales-ai/prospects/'+pid);if(activeSelection.current===pid)setDetail(d);}},[selected,search]);
  useEffect(()=>{let live=true;api<State>('sales-ai').then(s=>{if(live)setState(s);}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[]);
  const pending=detail?.jobs.some(j=>active(j.state));
- useEffect(()=>{if(!pending)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void load().catch(e=>setError(e.message));},4000);return()=>clearInterval(timer);},[pending,load]);
+ useEffect(()=>{if(!pending)return;const timer=setInterval(()=>{if(document.visibilityState==='visible'&&!polling.current){polling.current=true;void load().catch(e=>setError(e.message)).finally(()=>{polling.current=false;});}},4000);return()=>clearInterval(timer);},[pending,load]);
  async function action(fn:()=>Promise<void>){if(busy)return;setBusy(true);setError('');try{await fn();}catch(e){setError(e instanceof Error?e.message:'Unable to save.');}finally{setBusy(false);}}
  async function form(e:FormEvent<HTMLFormElement>,fn:(f:FormData)=>Promise<void>){e.preventDefault();const f=new FormData(e.currentTarget);await action(()=>fn(f));}
  async function open(pid:string){await action(async()=>{activeSelection.current=pid;setSelected(pid);setDetail(null);const d=await api<Detail>('sales-ai/prospects/'+pid);if(activeSelection.current===pid)setDetail(d);});}
