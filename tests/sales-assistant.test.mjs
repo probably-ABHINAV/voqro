@@ -48,6 +48,8 @@ test('website research rejects private destinations, redirects and credentials w
  await assert.rejects(researchWebsite('https://brand.example.com/',{...options,transport:async()=>({status:302,location:'https://169.254.169.254/'})}));
  await assert.rejects(researchWebsite('https://brand.example.com/',{...options,environment:{HTTPS_PROXY:'http://configured-proxy'}}),/network/);
  assert.equal(extractWebsiteText('<form>private field</form><p>Hello &amp; world</p>'),'Hello & world');
+ assert.equal(extractWebsiteText('<script>'.repeat(50000)),'');
+ assert.equal(extractWebsiteText('<'.repeat(500000)),'');
 });
 
 test('all client-team reads and actions are agency-sales only; only the owner allocates allowance',async t=>{

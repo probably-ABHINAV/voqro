@@ -16,8 +16,21 @@ export function publicIPv4(address) {
   return !(a === 0 || a === 10 || a === 127 || a >= 224 || a === 100 && b >= 64 && b <= 127 || a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 || b === 2 || b === 88 && c === 99) || a === 198 && (b === 18 || b === 19 || b === 51 && c === 100) || a === 203 && b === 0 && c === 113 || address === '168.63.129.16');
 }
 export function extractWebsiteText(html) {
-  return html.replace(/<!--[\s\S]*?-->/g, ' ').replace(/<(script|style|noscript|template|svg|form)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]*>/g, ' ')
-    .replace(/&(?:nbsp|amp|lt|gt|quot|apos|#39);/gi, entity => ({'&nbsp;':' ','&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&#39;':"'"})[entity.toLowerCase()])
+  // Linear scanning avoids backtracking on hostile or malformed HTML.
+  const lower=html.toLowerCase(),parts=[],ignored=new Set(['script','style','noscript','template','svg','form']);
+  let cursor=0,skip=null;
+  while(cursor<html.length){
+    if(skip){const close=lower.indexOf('</'+skip,cursor);if(close<0)break;cursor=close;skip=null;}
+    const open=html.indexOf('<',cursor);
+    if(open<0){parts.push(html.slice(cursor));break;}
+    parts.push(html.slice(cursor,open));
+    if(lower.startsWith('<!--',open)){const end=lower.indexOf('-->',open+4);if(end<0)break;cursor=end+3;continue;}
+    const end=html.indexOf('>',open+1);if(end<0)break;
+    const tag=lower.slice(open+1,end),name=tag.match(/^([a-z0-9]+)/)?.[1];
+    if(name&&ignored.has(name))skip=name;
+    parts.push(' ');cursor=end+1;
+  }
+  return parts.join(' ').replace(/&(?:nbsp|amp|lt|gt|quot|apos|#39);/gi, entity => ({'&nbsp;':' ','&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&#39;':"'"})[entity.toLowerCase()])
     .replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 10000);
 }
 function requestPage(url, address) {
