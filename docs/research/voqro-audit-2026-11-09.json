@@ -1,0 +1,317 @@
+{
+  "review_date_ist": "2026-11-09",
+  "repository_commit": "bcb1a6402650bf9903ce23283fca283b1b6e0fcb",
+  "methodology": "One unsigned-in Chromium desktop and simulated mobile journey, each homepage then warm-cache login; mobile viewport 390x844, 4x CPU slowdown, configured 150ms latency and 1.6Mbps download. Five sequential curl samples per URL. Cloud environment observations, not India field data or authenticated-workspace measurements. Page metrics sampled 5 seconds after load; no INP measurement. Transfer sizes may omit cross-origin resources without timing permission.",
+  "browser": [
+    {
+      "mode": "desktop",
+      "path": "/",
+      "status": 200,
+      "elapsed": 6868,
+      "lcp": 1316,
+      "cls": 0,
+      "longtasks": 0,
+      "longtask_ms": 0,
+      "ttfb": 1080.1000000000058,
+      "dom_ready": 1305.3999999999942,
+      "load": 1641.8999999999942,
+      "requests": 43,
+      "transfer_bytes": 610081,
+      "js_transfer_bytes": 536885,
+      "js_decoded_bytes": 1768658,
+      "overflow": false
+    },
+    {
+      "mode": "desktop",
+      "path": "/login",
+      "status": 200,
+      "elapsed": 5413,
+      "lcp": 992,
+      "cls": 0.06081266878858024,
+      "longtasks": 0,
+      "longtask_ms": 0,
+      "ttfb": 211,
+      "dom_ready": 259.30000000001746,
+      "load": 349.70000000001164,
+      "requests": 33,
+      "transfer_bytes": 46985,
+      "js_transfer_bytes": 41063,
+      "js_decoded_bytes": 1910107,
+      "overflow": false
+    },
+    {
+      "mode": "mobile",
+      "path": "/",
+      "status": 200,
+      "elapsed": 7495,
+      "lcp": 664,
+      "cls": 0,
+      "longtasks": 5,
+      "longtask_ms": 527,
+      "ttfb": 182.20000000001164,
+      "dom_ready": 595.5999999999767,
+      "load": 2295.5999999999767,
+      "requests": 43,
+      "transfer_bytes": 609062,
+      "js_transfer_bytes": 536073,
+      "js_decoded_bytes": 1768658,
+      "overflow": false
+    },
+    {
+      "mode": "mobile",
+      "path": "/login",
+      "status": 200,
+      "elapsed": 5492,
+      "lcp": 1552,
+      "cls": 0.11347744675661559,
+      "longtasks": 2,
+      "longtask_ms": 124,
+      "ttfb": 77,
+      "dom_ready": 235,
+      "load": 411.6000000000349,
+      "requests": 33,
+      "transfer_bytes": 46848,
+      "js_transfer_bytes": 40924,
+      "js_decoded_bytes": 1910107,
+      "overflow": false
+    }
+  ],
+  "http": [
+    {
+      "url": "https://voqro.vercel.app/",
+      "samples": [
+        {
+          "status": 200,
+          "ttfb_ms": 333,
+          "total_ms": 333,
+          "bytes": 11671
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 820,
+          "total_ms": 820,
+          "bytes": 11671
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 81,
+          "total_ms": 81,
+          "bytes": 11671
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 274,
+          "total_ms": 274,
+          "bytes": 11671
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 180,
+          "total_ms": 181,
+          "bytes": 11671
+        }
+      ]
+    },
+    {
+      "url": "https://voqro.vercel.app/api/health",
+      "samples": [
+        {
+          "status": 200,
+          "ttfb_ms": 462,
+          "total_ms": 462,
+          "bytes": 44
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 874,
+          "total_ms": 874,
+          "bytes": 44
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 411,
+          "total_ms": 411,
+          "bytes": 44
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 447,
+          "total_ms": 448,
+          "bytes": 44
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 864,
+          "total_ms": 864,
+          "bytes": 44
+        }
+      ]
+    },
+    {
+      "url": "https://voqro.vercel.app/api/public",
+      "samples": [
+        {
+          "status": 200,
+          "ttfb_ms": 413,
+          "total_ms": 413,
+          "bytes": 596
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 301,
+          "total_ms": 301,
+          "bytes": 596
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 315,
+          "total_ms": 315,
+          "bytes": 596
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 329,
+          "total_ms": 329,
+          "bytes": 596
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 418,
+          "total_ms": 418,
+          "bytes": 596
+        }
+      ]
+    },
+    {
+      "url": "https://voqro-api-14829c4d.centralindia.cloudapp.azure.com/api/health",
+      "samples": [
+        {
+          "status": 200,
+          "ttfb_ms": 821,
+          "total_ms": 821,
+          "bytes": 44
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 493,
+          "total_ms": 493,
+          "bytes": 44
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 282,
+          "total_ms": 282,
+          "bytes": 44
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 290,
+          "total_ms": 290,
+          "bytes": 44
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 280,
+          "total_ms": 280,
+          "bytes": 44
+        }
+      ]
+    }
+  ],
+  "hosting": {
+    "vercel_plan": "hobby",
+    "deployment": "dpl_8YA5PCUCwuG2nJQuKLtrUKry19ne",
+    "observed_function_region": "iad1",
+    "backend_region": "centralindia"
+  },
+  "sources": [
+    {
+      "name": "modash",
+      "url": "https://www.modash.io/",
+      "final_url": "https://www.modash.io/",
+      "status": 200,
+      "text_chars": 12819
+    },
+    {
+      "name": "grin",
+      "url": "https://grin.co/",
+      "final_url": "https://grin.co/",
+      "status": 200,
+      "text_chars": 8552
+    },
+    {
+      "name": "aspire",
+      "url": "https://www.aspire.io/",
+      "final_url": "https://www.aspire.io/",
+      "status": 200,
+      "text_chars": 11675
+    },
+    {
+      "name": "creatoriq",
+      "url": "https://www.creatoriq.com/",
+      "final_url": "https://www.creatoriq.com/",
+      "status": 200,
+      "text_chars": 8283
+    },
+    {
+      "name": "qoruz",
+      "url": "https://qoruz.com/",
+      "final_url": "https://qoruz.com/",
+      "status": 200,
+      "text_chars": 8885
+    },
+    {
+      "name": "oneimpression",
+      "url": "https://www.oneimpression.io/",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "frameio",
+      "url": "https://frame.io/",
+      "final_url": "https://frame.io/",
+      "status": 200,
+      "text_chars": 9007
+    },
+    {
+      "name": "webvitals",
+      "url": "https://web.dev/articles/vitals",
+      "final_url": "https://web.dev/articles/vitals",
+      "status": 200,
+      "text_chars": 16832
+    },
+    {
+      "name": "next-lazy",
+      "url": "https://nextjs.org/docs/app/guides/lazy-loading",
+      "final_url": "https://nextjs.org/docs/app/guides/lazy-loading",
+      "status": 200,
+      "text_chars": 7395
+    },
+    {
+      "name": "vercel-regions",
+      "url": "https://vercel.com/docs/functions/configuring-functions/region",
+      "final_url": "https://vercel.com/docs/functions/configuring-functions/region",
+      "status": 200,
+      "text_chars": 11369
+    },
+    {
+      "name": "vercel-hobby",
+      "url": "https://vercel.com/docs/plans/hobby",
+      "final_url": "https://vercel.com/docs/plans/hobby",
+      "status": 200,
+      "text_chars": 11430
+    },
+    {
+      "name": "meta-instagram",
+      "url": "https://developers.facebook.com/docs/instagram-platform/",
+      "final_url": "https://developers.facebook.com/documentation/instagram-platform",
+      "status": 200,
+      "text_chars": 4281
+    },
+    {
+      "name": "clerk-session",
+      "url": "https://clerk.com/docs/guides/sessions/session-tokens",
+      "status": 200
+    }
+  ],
+  "limits": "Competitor claims are taken from public marketing pages, not independently benchmarked products. One Impression URL returned 404 and was not used. No new provider connected, production records changed, or subscription redeemed."
+}

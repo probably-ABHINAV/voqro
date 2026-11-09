@@ -1,3 +1,4 @@
+import {createSalesAssistant} from './sales-assistant.mjs';
 import {backupStatus} from './offsite-backups.mjs';
 import {createCampaignPacks} from './campaign-packs.mjs';
 import {createRequestGuards} from './request-guards.mjs';
@@ -96,6 +97,8 @@ export const workflow=createWorkflow({db,row,rows,run,id,now,transaction,require
 export const notifications=createNotifications({db,row,rows,run,id,now,transaction,requireThat,textField,send,body,workflow});
 function connectionState(u){const visible=u.role==='brand'?[u.brand_id]:u.role==='creator'?rows('SELECT DISTINCT c.brand_id FROM campaigns c JOIN assignments a ON a.campaign_id=c.id WHERE a.creator_id=?',u.creator_id).map(c=>c.brand_id):rows('SELECT id FROM brands').map(b=>b.id);const connected=rows("SELECT brand_id,expires_at FROM instagram_connections WHERE status='Connected'").filter(c=>visible.includes(c.brand_id)&&(!c.expires_at||c.expires_at>Date.now())).length;const cloudState=cloud.status();if(!['owner','manager'].includes(u.role)){delete cloudState.monthly_limit_cents;delete cloudState.reservation_cents;}return {...(u.role==='owner'?{backups:backupStatus()}:{}),identity:identity.publicConfig(),cloud:cloudState,instagram:{...instagram.status(),connected_accounts:connected},notifications:{in_app:'Available',email:notifications.status().enabled?'Enabled for owner-queued notifications':notifications.status().configured?'Configured; sending disabled':'Not configured'},payments:'Manual records; payment provider not connected',signing:'Operational acknowledgements; signing provider not connected'};}
 
+export const salesAssistant=createSalesAssistant({db,row,rows,run,id,now,transaction,requireThat,textField,send,body});
+
 const requestGuards=createRequestGuards({db});
 async function api(req,res,path){
  if(!['GET','HEAD'].includes(req.method)){
@@ -132,6 +135,7 @@ async function api(req,res,path){
   requireThat(false,403,'This account does not have access to agency business records.');
  }
  if(await identity.handleAuthed(req,res,path,u))return;
+ if(await salesAssistant.handler(req,res,path,u))return;
  if(await notifications.handler(req,res,path,u))return;
  if(await optimization.handler(req,res,path,u))return;
  if(await workflow.handler(req,res,path,u))return;
@@ -217,5 +221,5 @@ app.use((req,res)=>{
 });
 app.use((e,req,res,next)=>{if(res.headersSent)return next(e);if(!e.status)console.error(e);send(res,e.status||500,{error:e.status?e.message:'Something went wrong. Please retry.'},e.headers||{});});
 export const server=http.createServer(app);
-server.on('close',()=>{operations.stop();workflow.stop();cloud.stop();instagram.stop();notifications.stop();});
-if(process.env.NODE_ENV!=='test'){operations.start();workflow.start();cloud.start();instagram.start();notifications.start();server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>console.log(`Voqro listening on port ${process.env.PORT||3000}. Demo access ${process.env.DEMO_MODE==='1'?'enabled':'disabled'}.`));}
+server.on('close',()=>{salesAssistant.stop();operations.stop();workflow.stop();cloud.stop();instagram.stop();notifications.stop();});
+if(process.env.NODE_ENV!=='test'){salesAssistant.start();operations.start();workflow.start();cloud.start();instagram.start();notifications.start();server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>console.log(`Voqro listening on port ${process.env.PORT||3000}. Demo access ${process.env.DEMO_MODE==='1'?'enabled':'disabled'}.`));}

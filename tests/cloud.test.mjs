@@ -189,3 +189,13 @@ test('queued Azure analysis cannot spend after its operator loses access',async(
   const job=f.row('SELECT * FROM cloud_ai_jobs WHERE id=?',requested.data.id);assert.equal(job.state,'Failed');assert.equal(job.external_started,0);assert.equal(job.reserved_cents,0);assert.equal(f.modelCalls(),0);
  }finally{await f.close();}
 });
+
+test('media jobs count sales reservations against the same monthly AI ceiling',async()=>{
+ const f=await fixture();try{
+  f.db.exec('CREATE TABLE sales_ai_jobs(id TEXT PRIMARY KEY,reserved_cents INTEGER,created TEXT)');
+  f.run('INSERT INTO sales_ai_jobs VALUES(?,?,?)','sales',60,new Date().toISOString());
+  await f.request('/budget',{campaign_id:'cam1',limit_cents:100});
+  const result=await f.request('/analyse',{version_id:'v1',mode:'aws',language:'en-IN'});
+  assert.equal(result.status,409);assert.equal(f.row('SELECT COUNT(*) n FROM cloud_ai_jobs').n,0);
+ }finally{await f.close();}
+});
