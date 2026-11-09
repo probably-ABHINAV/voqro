@@ -2,6 +2,8 @@
 
 import {useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {api} from '../lib/api';
+import dynamic from 'next/dynamic';
+const SalesAssistant=dynamic(()=>import('./sales-assistant'),{loading:()=> <p role="status">Loading client team…</p>});
 import type {ScreenProps} from '../lib/types';
 
 type Brand = {id: string; name: string; industry: string; color: string};
@@ -64,6 +66,7 @@ export function SalesScreen({view, workspace, refresh, notify, navigate}: Screen
   const itemKey = useRef(0);
   const [versionId, setVersionId] = useState('');
   const [searchStage, setSearchStage] = useState('All');
+  const [aiOpen,setAiOpen]=useState(false);
   const effectiveView = view === 'catalog' ? tab : view;
 
   useEffect(() => {
@@ -123,6 +126,7 @@ export function SalesScreen({view, workspace, refresh, notify, navigate}: Screen
       <div><p className="mb-2 text-xs font-semibold uppercase tracking-[.2em] text-[#748364]">{view === 'catalog' ? 'Catalogue & website' : effectiveView === 'pipeline' ? 'Sales workspace' : 'Your agency, together'}</p><h1 className="page-title text-3xl font-medium tracking-tight">{({pipeline: 'From a hello to something good.', proposals: 'Make the possibilities tangible.', brands: 'A home for every brand.', creators: 'Original voices. Shared possibilities.', shortlist: 'Your kind of people.', content: 'Stories worth sharing.'} as Record<string, string>)[effectiveView] || 'Your creator collective.'}</h1><p className="mt-2 max-w-2xl text-sm text-[#6b786b]">{effectiveView === 'pipeline' ? 'Follow each enquiry through a clear proposal and a brand decision.' : effectiveView === 'proposals' ? 'Clear scope, itemised prices, and every agreed version in one place.' : effectiveView === 'brands' ? 'Create the brand before inviting its team or preparing a proposal.' : 'Manage your relationships with current records and clear evidence.'}</p></div>
       {editor && <div className="flex flex-wrap gap-2">{effectiveView === 'pipeline' && <button className="btn btn-primary" onClick={() => open({kind: 'enquiry'})}>Add enquiry</button>}{effectiveView === 'proposals' && <button className="btn btn-primary" onClick={() => compose()}>New proposal</button>}{effectiveView === 'brands' && <button className="btn btn-primary" onClick={() => open({kind: 'brand'})}>Add brand</button>}{effectiveView === 'creators' && <button className="btn btn-primary" onClick={() => open({kind: 'creator'})}>Add creator</button>}{effectiveView === 'content' && <button className="btn btn-primary" onClick={() => open({kind: 'content'})}>Add content</button>}</div>}
     </header>
+    {effectiveView==='pipeline'&&editor&&<><div><button className="btn" onClick={()=>setAiOpen(!aiOpen)} aria-expanded={aiOpen}>{aiOpen?'Close AI client team':'Open AI client team'}</button></div>{aiOpen&&<SalesAssistant owner={data.user.role==='owner'} refreshWorkspace={refresh}/>}</>}
     {view === 'catalog' && <nav className="flex flex-wrap gap-2" aria-label="Catalogue sections">{[['creators', 'Creator profiles'], ['brands', 'Brands'], ['content', 'Services & case studies']].map(([key, label]) => <button key={key} className={`btn ${tab === key ? 'btn-primary' : ''}`} aria-pressed={tab === key} onClick={() => {setTab(key); setSearch('');}}>{label}</button>)}</nav>}
     {!dialog && formError}
     {catalogueError && editor && <div role="alert" className="card flex flex-wrap items-center gap-3 p-4"><p className="text-sm">Catalogue details could not be loaded: {catalogueError}</p><button className="btn" onClick={() => setCatalogueEpoch(epoch => epoch + 1)}>Retry catalogue</button></div>}

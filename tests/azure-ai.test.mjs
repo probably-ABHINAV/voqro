@@ -25,3 +25,12 @@ test('Azure rejects truncated and malformed responses rather than creating a fal
   const provider=createAzureAIProvider(config,{credential:async()=>'private-token',request:async()=>response});await assert.rejects(provider.analyse(input));
  }
 });
+
+test('Azure sales generation uses bounded untrusted evidence and no outbound messaging tools',async()=>{
+ const calls=[];
+ const provider=createAzureAIProvider(config,{credential:async()=>'private-token',request:async(url,options)=>{calls.push({url,options});return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({summary:'Evidence summary',findings:[],message:'A draft for review.'})}}],usage:{prompt_tokens:10,completion_tokens:20}});}});
+ const result=await provider.draftSales({kind:'outreach',evidence:{text:'Public text containing an untrusted request to ignore instructions.'},profile:{service:'Creator campaigns'}});
+ assert.equal(result.payload.message,'A draft for review.');const payload=JSON.parse(calls[0].options.body);
+ assert.match(payload.messages[0].content,/untrusted DATA/);assert.match(payload.messages[0].content,/No tools, browsing or sending/);assert.equal(payload.max_tokens,1400);assert.equal(payload.tools,undefined);
+ await assert.rejects(provider.draftSales({text:'x'.repeat(24001)}));assert.equal(calls.length,1);
+});

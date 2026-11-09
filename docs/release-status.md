@@ -1,4 +1,4 @@
-# Voqro release status — 7 November 2026
+# Voqro release status — 9 November 2026
 
 ## Live architecture
 
@@ -27,6 +27,10 @@ The Veda Munch pack contains the supplied scripts, captions, creator links, plan
 3. **Payments:** manual invoices, receipts and payouts are available; no payment processor is connected. A real campaign must be reconciled against actual settlement evidence.
 4. **Campaign acceptance:** invited client/creator onboarding and a real approval/revision cycle need those participants. Real observed metrics are required for optimization results.
 5. **Operations:** daily private Azure Blob backups have full readback/isolated restore verification and owner status; see [backup operations](azure-backups.md). The release automation adds backend/type/browser/build checks, public availability probes, and restored-application acceptance using synthetic accounts. External alert delivery, a real production-identity recovery exercise and cross-region recovery remain outstanding. See [release checks](release-checks.md) for coverage and limits.
+
+## AI client team
+
+The URL-based client team adds public-source audits, editable outreach/reply drafts, manual review/send records, opt-outs and qualified-prospect conversion inside the enquiry pipeline. It uses the existing Azure deployment and a shared media/sales spending ceiling. Search, messaging and booking providers are not connected by this feature. See [client-team operations](ai-client-team.md).
 
 ## Release automation
 

@@ -1,3 +1,4 @@
+import {monthlyAIReserved} from './ai-budget.mjs';
 import {createAzureAIProvider,validateAzureAIConfig} from './azure-ai.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream} from 'node:fs';
@@ -128,7 +129,7 @@ export function createCloud({db,row,rows,run,id,now,transaction,requireThat=need
    const existing=row('SELECT * FROM cloud_ai_jobs WHERE version_id=? AND mode=?',vid,mode);if(existing)return existing;
    const cents=mode!=='local'?config.reservationCents:0,budget=row('SELECT * FROM cloud_budgets WHERE campaign_id=?',d.campaign_id)?.limit_cents||0;
    const campaignReserved=row('SELECT COALESCE(SUM(reserved_cents),0) AS n FROM cloud_ai_jobs WHERE campaign_id=?',d.campaign_id).n;
-   const monthReserved=row('SELECT COALESCE(SUM(reserved_cents),0) AS n FROM cloud_ai_jobs WHERE created>=?',now().slice(0,7)+'-01T00:00:00.000Z').n;
+   const monthReserved=monthlyAIReserved(db,now().slice(0,7)+'-01T00:00:00.000Z');
    need(cents<=budget-campaignReserved&&cents<=config.monthlyLimitCents-monthReserved,409,'The campaign or monthly AI allowance is exhausted.');
    need(row('SELECT COUNT(*) AS n FROM cloud_ai_jobs WHERE created_by=? AND created>?',u.id,new Date(Date.now()-86400000).toISOString()).n<20,429,'Daily analysis limit reached.');
    const jid=id('ai');run('INSERT INTO cloud_ai_jobs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',jid,vid,d.campaign_id,mode,language,'Queued',cents,0,null,null,null,null,null,'voqro-'+jid,u.id,now(),now());return row('SELECT * FROM cloud_ai_jobs WHERE id=?',jid);
